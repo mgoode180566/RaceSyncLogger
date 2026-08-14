@@ -12,6 +12,7 @@
 #include <esp_task_wdt.h>
 #include <time.h>
 
+
 /*
  RaceSync V1
  Motorcycle GPS / IMU / TPS logger
