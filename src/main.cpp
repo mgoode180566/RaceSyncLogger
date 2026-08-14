@@ -723,13 +723,7 @@ void setup() {
    If the acquisition loop gets stuck for 5 seconds,
    reset the ESP32.
   */
-  esp_task_wdt_config_t wdtConfig = {
-    .timeout_ms = 5000,
-    .idle_core_mask = 0,
-    .trigger_panic = true
-  };
-
-  esp_task_wdt_init(&wdtConfig);
+  esp_task_wdt_init(5, true);
   esp_task_wdt_add(nullptr);
 
   state = State::IDLE;
@@ -787,8 +781,8 @@ void loop() {
 
     const uint32_t period =
       max(
-        1UL,
-        1000UL / max(1UL, cfg.imuRateHz)
+        1U,
+        1000U / max(1U, cfg.imuRateHz)
       );
 
     if (now - lastSampleMs >= period) {
