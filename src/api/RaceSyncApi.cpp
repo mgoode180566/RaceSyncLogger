@@ -1,7 +1,11 @@
 #include "RaceSyncApi.h"
+
 #include <ArduinoJson.h>
+
 #include "../config/RaceSyncConfig.h"
+
 #include "esp_system.h"
+
 
 RaceSyncApi::RaceSyncApi(
     RaceSyncStorage& storage,
@@ -24,6 +28,7 @@ RaceSyncApi::RaceSyncApi(
 {
 }
 
+
 void RaceSyncApi::addCorsHeaders()
 {
     _server.sendHeader(
@@ -42,6 +47,7 @@ void RaceSyncApi::addCorsHeaders()
     );
 }
 
+
 void RaceSyncApi::sendJson(
     int status,
     const String& body)
@@ -55,6 +61,7 @@ void RaceSyncApi::sendJson(
     );
 }
 
+
 String RaceSyncApi::formatUptime()
 {
     uint32_t seconds =
@@ -63,17 +70,20 @@ String RaceSyncApi::formatUptime()
     uint32_t days =
         seconds / 86400;
 
-    seconds %= 86400;
+    seconds %=
+        86400;
 
     uint32_t hours =
         seconds / 3600;
 
-    seconds %= 3600;
+    seconds %=
+        3600;
 
     uint32_t minutes =
         seconds / 60;
 
-    seconds %= 60;
+    seconds %=
+        60;
 
     char buffer[40];
 
@@ -87,8 +97,10 @@ String RaceSyncApi::formatUptime()
         seconds
     );
 
-    return String(buffer);
+    return
+        String(buffer);
 }
+
 
 String RaceSyncApi::formatVBoxTime(
     double rawTime)
@@ -124,6 +136,17 @@ String RaceSyncApi::formatVBoxTime(
             0.5
         );
 
+    if (
+        milliseconds >=
+        1000
+    )
+    {
+        milliseconds =
+            0;
+
+        whole++;
+    }
+
     char buffer[32];
 
     snprintf(
@@ -136,30 +159,61 @@ String RaceSyncApi::formatVBoxTime(
         milliseconds
     );
 
-    return String(buffer);
+    return
+        String(buffer);
 }
+
 
 const char* RaceSyncApi::resetReasonName()
 {
-    switch (esp_reset_reason())
+    switch (
+        esp_reset_reason()
+    )
     {
-        case ESP_RST_POWERON: return "POWER_ON";
-        case ESP_RST_EXT: return "EXTERNAL_RESET";
-        case ESP_RST_SW: return "SOFTWARE_RESET";
-        case ESP_RST_PANIC: return "PANIC";
-        case ESP_RST_INT_WDT: return "INTERRUPT_WATCHDOG";
-        case ESP_RST_TASK_WDT: return "TASK_WATCHDOG";
-        case ESP_RST_WDT: return "WATCHDOG";
-        case ESP_RST_DEEPSLEEP: return "DEEP_SLEEP";
-        case ESP_RST_BROWNOUT: return "BROWNOUT";
-        case ESP_RST_SDIO: return "SDIO";
-        default: return "UNKNOWN";
+        case ESP_RST_POWERON:
+            return "POWER_ON";
+
+        case ESP_RST_EXT:
+            return "EXTERNAL_RESET";
+
+        case ESP_RST_SW:
+            return "SOFTWARE_RESET";
+
+        case ESP_RST_PANIC:
+            return "PANIC";
+
+        case ESP_RST_INT_WDT:
+            return "INTERRUPT_WATCHDOG";
+
+        case ESP_RST_TASK_WDT:
+            return "TASK_WATCHDOG";
+
+        case ESP_RST_WDT:
+            return "WATCHDOG";
+
+        case ESP_RST_DEEPSLEEP:
+            return "DEEP_SLEEP";
+
+        case ESP_RST_BROWNOUT:
+            return "BROWNOUT";
+
+        case ESP_RST_SDIO:
+            return "SDIO";
+
+        default:
+            return "UNKNOWN";
     }
 }
+
 
 void RaceSyncApi::handleStatus()
 {
     JsonDocument doc;
+
+
+    // --------------------------------------------------------
+    // SYSTEM
+    // --------------------------------------------------------
 
     JsonObject system =
         doc["system"]
@@ -172,10 +226,13 @@ void RaceSyncApi::handleStatus()
         RaceSyncConfig::FIRMWARE;
 
     system["mode"] =
-        dataModeName(_mode);
+        dataModeName(
+            _mode
+        );
 
     system["uptimeSeconds"] =
-        millis() / 1000;
+        millis() /
+        1000;
 
     system["uptime"] =
         formatUptime();
@@ -187,10 +244,9 @@ void RaceSyncApi::handleStatus()
         resetReasonName();
 
 
-    JsonObject health =
-        doc["health"]
-            .to<JsonObject>();
-
+    // --------------------------------------------------------
+    // BOARD
+    // --------------------------------------------------------
 
     JsonObject board =
         doc["board"]
@@ -240,6 +296,10 @@ void RaceSyncApi::handleStatus()
         ESP.getFreePsram();
 
 
+    // --------------------------------------------------------
+    // WIFI
+    // --------------------------------------------------------
+
     JsonObject wifi =
         doc["wifi"]
             .to<JsonObject>();
@@ -266,6 +326,10 @@ void RaceSyncApi::handleStatus()
         _wifi.uptimeSeconds();
 
 
+    // --------------------------------------------------------
+    // GPS / DATA SOURCE
+    // --------------------------------------------------------
+
     JsonObject gps =
         doc["gps"]
             .to<JsonObject>();
@@ -274,7 +338,8 @@ void RaceSyncApi::handleStatus()
         _gps.connected();
 
     gps["source"] =
-        _mode == DataMode::LIVE
+        _mode ==
+            DataMode::LIVE
             ? "MG-902"
             : "DEMO";
 
@@ -303,18 +368,28 @@ void RaceSyncApi::handleStatus()
         _telemetry.height;
 
     gps["sampleRateHz"] =
-        _telemetry.samplePeriod > 0
+        _telemetry.samplePeriod >
+            0
             ? 1.0 /
                 _telemetry.samplePeriod
             : 0.0;
 
-    uint32_t age =
+    uint32_t packetAge =
         _gps.lastPacketAgeMs();
 
-    if (age == UINT32_MAX)
-        gps["lastPacketAgeMs"] = -1;
+    if (
+        packetAge ==
+        UINT32_MAX
+    )
+    {
+        gps["lastPacketAgeMs"] =
+            -1;
+    }
     else
-        gps["lastPacketAgeMs"] = age;
+    {
+        gps["lastPacketAgeMs"] =
+            packetAge;
+    }
 
     gps["bytesReceived"] =
         _gps.bytesReceived();
@@ -326,14 +401,41 @@ void RaceSyncApi::handleStatus()
         _gps.checksumErrors();
 
     gps["demoSource"] =
-        _simulator.available()
-            ? _simulator.sourceFilename()
-            : "";
+        _simulator.sourceFilename();
 
+    gps["demoAvailable"] =
+        _simulator.available();
+
+    gps["demoFinished"] =
+        _simulator.finished();
+
+
+    // --------------------------------------------------------
+    // STORAGE
+    // --------------------------------------------------------
 
     JsonObject storage =
         doc["storage"]
             .to<JsonObject>();
+
+    uint64_t totalStorage =
+        _storage.totalBytes();
+
+    uint64_t usedStorage =
+        _storage.usedBytes();
+
+    uint64_t freeStorage =
+        _storage.freeBytes();
+
+    double usedPercent =
+        totalStorage >
+            0
+            ? (
+                usedStorage *
+                100.0
+            ) /
+                totalStorage
+            : 0.0;
 
     storage["type"] =
         _storage.storageType();
@@ -345,22 +447,16 @@ void RaceSyncApi::handleStatus()
         _storage.ready();
 
     storage["totalBytes"] =
-        _storage.totalBytes();
+        totalStorage;
 
     storage["usedBytes"] =
-        _storage.usedBytes();
+        usedStorage;
 
     storage["freeBytes"] =
-        _storage.freeBytes();
+        freeStorage;
 
     storage["usedPercent"] =
-        _storage.totalBytes() > 0
-            ? (
-                _storage.usedBytes() *
-                100.0
-            ) /
-            _storage.totalBytes()
-            : 0.0;
+        usedPercent;
 
     storage["sessionCount"] =
         _storage.sessionCount();
@@ -368,6 +464,13 @@ void RaceSyncApi::handleStatus()
     storage["writeErrors"] =
         _logger.storageWriteErrors();
 
+    storage["minimumFreeReserveBytes"] =
+        RaceSyncConfig::MIN_FREE_STORAGE_BYTES;
+
+
+    // --------------------------------------------------------
+    // LOGGER
+    // --------------------------------------------------------
 
     JsonObject logger =
         doc["logger"]
@@ -403,11 +506,24 @@ void RaceSyncApi::handleStatus()
     uint32_t writeAge =
         _logger.lastWriteAgeMs();
 
-    if (writeAge == UINT32_MAX)
-        logger["lastWriteAgeMs"] = -1;
+    if (
+        writeAge ==
+        UINT32_MAX
+    )
+    {
+        logger["lastWriteAgeMs"] =
+            -1;
+    }
     else
-        logger["lastWriteAgeMs"] = writeAge;
+    {
+        logger["lastWriteAgeMs"] =
+            writeAge;
+    }
 
+
+    // --------------------------------------------------------
+    // POWER
+    // --------------------------------------------------------
 
     JsonObject power =
         doc["power"]
@@ -423,34 +539,78 @@ void RaceSyncApi::handleStatus()
         false;
 
 
+    // --------------------------------------------------------
+    // HEALTH
+    // --------------------------------------------------------
+
+    JsonObject health =
+        doc["health"]
+            .to<JsonObject>();
+
     health["system"] =
         "OK";
 
-    if (_mode == DataMode::DEMO)
+
+    if (
+        _mode ==
+        DataMode::DEMO
+    )
     {
-        health["gps"] = "DEMO";
+        health["gps"] =
+            _simulator.finished()
+                ? "DEMO_FINISHED"
+                : "DEMO";
     }
-    else if (!_gps.connected())
+    else if (
+        !_gps.connected()
+    )
     {
-        health["gps"] = "NO_DEVICE";
+        health["gps"] =
+            "NO_DEVICE";
     }
-    else if (!_telemetry.valid)
+    else if (
+        !_telemetry.valid
+    )
     {
-        health["gps"] = "NO_FIX";
+        health["gps"] =
+            "NO_FIX";
     }
     else
     {
-        health["gps"] = "OK";
+        health["gps"] =
+            "OK";
     }
 
-    health["storage"] =
-        _storage.ready()
-            ? (
-                _logger.storageWriteErrors() == 0
-                    ? "OK"
-                    : "WARNING"
-            )
-            : "ERROR";
+
+    if (
+        !_storage.ready()
+    )
+    {
+        health["storage"] =
+            "ERROR";
+    }
+    else if (
+        usedPercent >=
+        RaceSyncConfig::STORAGE_FULL_PERCENT
+    )
+    {
+        health["storage"] =
+            "FULL";
+    }
+    else if (
+        usedPercent >=
+        RaceSyncConfig::STORAGE_WARNING_PERCENT
+    )
+    {
+        health["storage"] =
+            "WARNING";
+    }
+    else
+    {
+        health["storage"] =
+            "OK";
+    }
+
 
     health["logger"] =
         _logger.recording()
@@ -460,10 +620,14 @@ void RaceSyncApi::handleStatus()
     health["wifi"] =
         "OK";
 
+
     bool systemHealthy =
         _storage.ready() &&
+        usedPercent <
+            RaceSyncConfig::STORAGE_WARNING_PERCENT &&
         ESP.getFreeHeap() >
             RaceSyncConfig::MIN_HEALTHY_HEAP_BYTES;
+
 
     health["overall"] =
         systemHealthy
@@ -471,35 +635,62 @@ void RaceSyncApi::handleStatus()
             : "WARNING";
 
 
+    // --------------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------------
+
     String response;
-    serializeJson(doc, response);
+
+    serializeJson(
+        doc,
+        response
+    );
 
     sendJson(
         200,
         response
     );
 }
+
 
 void RaceSyncApi::handleLocation()
 {
     JsonDocument doc;
 
-    doc["valid"] = _telemetry.valid;
-    doc["latitude"] = _telemetry.latitude;
-    doc["longitude"] = _telemetry.longitude;
-    doc["speedKmh"] = _telemetry.velocityKmh;
-    doc["heading"] = _telemetry.heading;
-    doc["height"] = _telemetry.height;
-    doc["satellites"] = _telemetry.satellites;
+    doc["valid"] =
+        _telemetry.valid;
+
+    doc["latitude"] =
+        _telemetry.latitude;
+
+    doc["longitude"] =
+        _telemetry.longitude;
+
+    doc["speedKmh"] =
+        _telemetry.velocityKmh;
+
+    doc["heading"] =
+        _telemetry.heading;
+
+    doc["height"] =
+        _telemetry.height;
+
+    doc["satellites"] =
+        _telemetry.satellites;
 
     String response;
-    serializeJson(doc, response);
+
+    serializeJson(
+        doc,
+        response
+    );
 
     sendJson(
         200,
         response
     );
 }
+
 
 void RaceSyncApi::handleTelemetry()
 {
@@ -509,7 +700,9 @@ void RaceSyncApi::handleTelemetry()
         _telemetry.valid;
 
     doc["mode"] =
-        dataModeName(_mode);
+        dataModeName(
+            _mode
+        );
 
     doc["sampleIndex"] =
         _telemetry.sampleIndex;
@@ -567,13 +760,18 @@ void RaceSyncApi::handleTelemetry()
         _telemetry.comboG;
 
     String response;
-    serializeJson(doc, response);
+
+    serializeJson(
+        doc,
+        response
+    );
 
     sendJson(
         200,
         response
     );
 }
+
 
 void RaceSyncApi::handleSessions()
 {
@@ -594,7 +792,11 @@ void RaceSyncApi::handleSessions()
     );
 
     String response;
-    serializeJson(doc, response);
+
+    serializeJson(
+        doc,
+        response
+    );
 
     sendJson(
         200,
@@ -602,10 +804,16 @@ void RaceSyncApi::handleSessions()
     );
 }
 
+
 void RaceSyncApi::handleSessionDownload()
 {
+    const String prefix =
+        "/api/sessions/";
+
     String filename =
-        _server.pathArg(0);
+        _server.uri().substring(
+            prefix.length()
+        );
 
     if (
         !_storage.isSafeVBoxFilename(
@@ -617,6 +825,7 @@ void RaceSyncApi::handleSessionDownload()
             400,
             "{\"error\":\"Invalid filename\"}"
         );
+
         return;
     }
 
@@ -631,6 +840,7 @@ void RaceSyncApi::handleSessionDownload()
             404,
             "{\"error\":\"Session not found\"}"
         );
+
         return;
     }
 
@@ -656,9 +866,12 @@ void RaceSyncApi::handleSessionDownload()
     file.close();
 }
 
+
 void RaceSyncApi::begin()
 {
-    _server.enableCORS(true);
+    _server.enableCORS(
+        true
+    );
 
     _server.on(
         "/api/status",
@@ -696,27 +909,36 @@ void RaceSyncApi::begin()
         }
     );
 
-    _server.on(
-        UriBraces(
-            "/api/sessions/{}"
-        ),
-        HTTP_GET,
-        [this]()
-        {
-            handleSessionDownload();
-        }
-    );
-
     _server.onNotFound(
         [this]()
         {
+            const String prefix =
+                "/api/sessions/";
+
+            if (
+                _server.method() ==
+                    HTTP_GET &&
+                _server.uri().startsWith(
+                    prefix
+                )
+            )
+            {
+                handleSessionDownload();
+
+                return;
+            }
+
             if (
                 _server.method() ==
                 HTTP_OPTIONS
             )
             {
                 addCorsHeaders();
-                _server.send(204);
+
+                _server.send(
+                    204
+                );
+
                 return;
             }
 
@@ -729,8 +951,11 @@ void RaceSyncApi::begin()
 
     _server.begin();
 
-    Serial.println("[HTTP] REST API ready");
+    Serial.println(
+        "[HTTP] REST API ready"
+    );
 }
+
 
 void RaceSyncApi::update()
 {

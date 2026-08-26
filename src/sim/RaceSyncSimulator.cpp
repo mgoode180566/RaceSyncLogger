@@ -6,15 +6,23 @@ bool RaceSyncSimulator::begin(
     _storage = &storage;
 
     if (_file)
+    {
         _file.close();
+    }
 
     _filename =
         storage.findDemoSource();
 
+    _finished = false;
+
     if (_filename.length() == 0)
     {
         _available = false;
-        Serial.println("[DEMO] No demo VBO available");
+
+        Serial.println(
+            "[DEMO] No demo VBO available"
+        );
+
         return false;
     }
 
@@ -26,44 +34,76 @@ bool RaceSyncSimulator::begin(
     if (!_file)
     {
         _available = false;
+
+        Serial.println(
+            "[DEMO] Unable to open demo VBO"
+        );
+
         return false;
     }
 
     if (!seekData())
     {
         _file.close();
+
         _available = false;
+
+        Serial.println(
+            "[DEMO] [data] section not found"
+        );
+
         return false;
     }
 
     _available = true;
-    _nextSampleMs = millis();
+    _finished = false;
 
-    Serial.print("[DEMO] Source: ");
-    Serial.println(_filename);
+    _nextSampleMs =
+        millis();
+
+    Serial.print(
+        "[DEMO] Source: "
+    );
+
+    Serial.println(
+        _filename
+    );
 
     return true;
 }
+
 
 bool RaceSyncSimulator::available() const
 {
     return _available;
 }
 
+
+bool RaceSyncSimulator::finished() const
+{
+    return _finished;
+}
+
+
 const String& RaceSyncSimulator::sourceFilename() const
 {
     return _filename;
 }
 
-double RaceSyncSimulator::convertRawLatitude(double raw)
+
+double RaceSyncSimulator::convertRawLatitude(
+    double raw)
 {
     return raw / 60.0;
 }
 
-double RaceSyncSimulator::convertRawLongitude(double raw)
+
+double RaceSyncSimulator::convertRawLongitude(
+    double raw)
 {
     return -raw / 60.0;
 }
+
 
 bool RaceSyncSimulator::seekData()
 {
@@ -72,7 +112,9 @@ bool RaceSyncSimulator::seekData()
     while (_file.available())
     {
         String line =
-            _file.readStringUntil('\n');
+            _file.readStringUntil(
+                '\n'
+            );
 
         line.trim();
 
@@ -89,20 +131,26 @@ bool RaceSyncSimulator::seekData()
     return false;
 }
 
+
 bool RaceSyncSimulator::parseLine(
     const String& sourceLine,
     Telemetry& telemetry)
 {
     char buffer[512];
+
     sourceLine.toCharArray(
         buffer,
         sizeof(buffer)
     );
 
-    double v[19] = {};
-    int count = 0;
+    double values[19] =
+        {};
 
-    char* context = nullptr;
+    int count =
+        0;
+
+    char* context =
+        nullptr;
 
     char* token =
         strtok_r(
@@ -116,7 +164,7 @@ bool RaceSyncSimulator::parseLine(
         count < 19
     )
     {
-        v[count++] =
+        values[count++] =
             atof(token);
 
         token =
@@ -128,55 +176,104 @@ bool RaceSyncSimulator::parseLine(
     }
 
     if (count < 12)
+    {
         return false;
+    }
 
-    telemetry.satellites = (uint8_t)v[0];
-    telemetry.rawTime = v[1];
-    telemetry.rawLatitude = v[2];
-    telemetry.rawLongitude = v[3];
+    telemetry.satellites =
+        (uint8_t)values[0];
+
+    telemetry.rawTime =
+        values[1];
+
+    telemetry.rawLatitude =
+        values[2];
+
+    telemetry.rawLongitude =
+        values[3];
 
     telemetry.latitude =
-        convertRawLatitude(v[2]);
+        convertRawLatitude(
+            values[2]
+        );
 
     telemetry.longitude =
-        convertRawLongitude(v[3]);
+        convertRawLongitude(
+            values[3]
+        );
 
-    telemetry.velocityKmh = v[4];
-    telemetry.heading = v[5];
-    telemetry.height = v[6];
-    telemetry.verticalVelocityMs = v[7];
-    telemetry.samplePeriod = v[8];
+    telemetry.velocityKmh =
+        values[4];
+
+    telemetry.heading =
+        values[5];
+
+    telemetry.height =
+        values[6];
+
+    telemetry.verticalVelocityMs =
+        values[7];
+
+    telemetry.samplePeriod =
+        values[8];
 
     if (
         telemetry.samplePeriod <= 0 ||
         telemetry.samplePeriod > 1
     )
     {
-        telemetry.samplePeriod = 0.040;
+        telemetry.samplePeriod =
+            0.040;
     }
 
-    telemetry.solutionType = (uint8_t)v[9];
-    telemetry.aviFileIndex = (int)v[10];
-    telemetry.aviTime = v[11];
+    telemetry.solutionType =
+        (uint8_t)values[9];
+
+    telemetry.aviFileIndex =
+        (int)values[10];
+
+    telemetry.aviTime =
+        values[11];
 
     if (count >= 19)
     {
-        telemetry.comboAcc = v[12];
-        telemetry.oilPressure = v[13];
-        telemetry.oilTemperature = v[14];
-        telemetry.waterTemperature = v[15];
-        telemetry.revs = v[16];
-        telemetry.fuelPressure = v[17];
-        telemetry.comboG = v[18];
+        telemetry.comboAcc =
+            values[12];
+
+        telemetry.oilPressure =
+            values[13];
+
+        telemetry.oilTemperature =
+            values[14];
+
+        telemetry.waterTemperature =
+            values[15];
+
+        telemetry.revs =
+            values[16];
+
+        telemetry.fuelPressure =
+            values[17];
+
+        telemetry.comboG =
+            values[18];
     }
 
-    telemetry.valid = true;
-    telemetry.timeValid = false;
+    telemetry.valid =
+        true;
+
+    // Demo rows contain time-of-day but not a full date.
+    telemetry.timeValid =
+        false;
+
     telemetry.sampleIndex++;
-    telemetry.rawVBoxLine = sourceLine;
+
+    telemetry.rawVBoxLine =
+        sourceLine;
 
     return true;
 }
+
 
 bool RaceSyncSimulator::readNext(
     Telemetry& telemetry)
@@ -187,7 +284,9 @@ bool RaceSyncSimulator::readNext(
     )
     {
         String line =
-            _file.readStringUntil('\n');
+            _file.readStringUntil(
+                '\n'
+            );
 
         line.trim();
 
@@ -199,23 +298,59 @@ bool RaceSyncSimulator::readNext(
             continue;
         }
 
-        if (parseLine(line, telemetry))
+        if (
+            parseLine(
+                line,
+                telemetry
+            )
+        )
+        {
             return true;
+        }
     }
 
-    // Loop demo forever.
-    return
-        begin(*_storage) &&
-        readNext(telemetry);
+    // --------------------------------------------------------
+    // IMPORTANT:
+    //
+    // The old demo implementation reopened the source file here
+    // and replayed it forever. That meant the logger also stayed
+    // open forever and eventually filled LittleFS.
+    //
+    // Demo mode now plays exactly once.
+    // --------------------------------------------------------
+
+    if (_file)
+    {
+        _file.close();
+    }
+
+    _available =
+        false;
+
+    _finished =
+        true;
+
+    Serial.println(
+        "[DEMO] End of demo session"
+    );
+
+    return false;
 }
+
 
 bool RaceSyncSimulator::update(
     Telemetry& telemetry)
 {
-    if (!_available)
+    if (
+        !_available ||
+        _finished
+    )
+    {
         return false;
+    }
 
-    uint32_t now = millis();
+    uint32_t now =
+        millis();
 
     if (
         (int32_t)(
@@ -227,8 +362,14 @@ bool RaceSyncSimulator::update(
         return false;
     }
 
-    if (!readNext(telemetry))
+    if (
+        !readNext(
+            telemetry
+        )
+    )
+    {
         return false;
+    }
 
     uint32_t delayMs =
         (uint32_t)(
@@ -237,10 +378,16 @@ bool RaceSyncSimulator::update(
         );
 
     if (delayMs < 1)
-        delayMs = 40;
+    {
+        delayMs =
+            40;
+    }
 
-    _nextSampleMs += delayMs;
+    _nextSampleMs +=
+        delayMs;
 
+    // If the loop has fallen a long way behind, resynchronise
+    // instead of trying to emit a large burst of samples.
     if (
         (int32_t)(
             now -
