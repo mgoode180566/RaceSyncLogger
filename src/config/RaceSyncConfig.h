@@ -21,5 +21,13 @@ namespace RaceSyncConfig
     constexpr uint32_t LOG_STOP_DELAY_MS = 60000;
     constexpr uint32_t LOG_FLUSH_INTERVAL_MS = 1000;
 
+    // Protect the filesystem from being completely consumed.
+    // Logging will close the active file if free space falls below 1 MB.
+    constexpr uint64_t MIN_FREE_STORAGE_BYTES = 1024ULL * 1024ULL;
+
+    // Status thresholds.
+    constexpr double STORAGE_WARNING_PERCENT = 90.0;
+    constexpr double STORAGE_FULL_PERCENT = 98.0;
+
     constexpr uint32_t MIN_HEALTHY_HEAP_BYTES = 30000;
 }

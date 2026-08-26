@@ -1,5 +1,7 @@
 #include "RaceSyncController.h"
+
 #include "../config/RaceSyncConfig.h"
+
 
 RaceSyncController::RaceSyncController()
     : _api(
@@ -14,6 +16,7 @@ RaceSyncController::RaceSyncController()
     )
 {
 }
+
 
 void RaceSyncController::incrementBootCount()
 {
@@ -34,12 +37,19 @@ void RaceSyncController::incrementBootCount()
     );
 }
 
+
 void RaceSyncController::begin()
 {
     Serial.println();
-    Serial.println("=============================");
-    Serial.println(" RaceSync V2.1 Modular");
-    Serial.println("=============================");
+    Serial.println(
+        "============================="
+    );
+    Serial.println(
+        " RaceSync V2.1 Modular"
+    );
+    Serial.println(
+        "============================="
+    );
 
     incrementBootCount();
 
@@ -61,8 +71,11 @@ void RaceSyncController::begin()
 
     _api.begin();
 
-    Serial.println("[MODE] Waiting for GPS...");
+    Serial.println(
+        "[MODE] Waiting for GPS..."
+    );
 }
+
 
 void RaceSyncController::updateDataMode()
 {
@@ -71,9 +84,12 @@ void RaceSyncController::updateDataMode()
 
     if (gpsPresent)
     {
+        // Do not switch source while the logger is in the middle
+        // of recording a demo session.
         if (
             !_logger.recording() ||
-            _mode == DataMode::LIVE
+            _mode ==
+                DataMode::LIVE
         )
         {
             _mode =
@@ -119,6 +135,7 @@ void RaceSyncController::updateDataMode()
     }
 }
 
+
 void RaceSyncController::update()
 {
     _gps.update(
@@ -136,10 +153,9 @@ void RaceSyncController::update()
         _gps.connected()
     )
     {
-        // NAV-PVT updates telemetry in RaceSyncGps::update().
-        // A simple change detector is enough here because
-        // sampleIndex increments only when a NAV-PVT packet arrives.
-        static uint32_t lastLiveIndex = 0;
+        // NAV-PVT increments sampleIndex only when a new packet arrives.
+        static uint32_t lastLiveIndex =
+            0;
 
         if (
             _telemetry.sampleIndex !=
@@ -162,6 +178,27 @@ void RaceSyncController::update()
             _simulator.update(
                 _telemetry
             );
+
+        // ----------------------------------------------------
+        // IMPORTANT:
+        //
+        // Demo replay is now one-shot. When the source VBO
+        // reaches EOF, immediately close the generated session.
+        //
+        // This prevents RS_DEMO_*.vbo from growing forever.
+        // ----------------------------------------------------
+
+        if (
+            _simulator.finished()
+        )
+        {
+            if (
+                _logger.recording()
+            )
+            {
+                _logger.forceStop();
+            }
+        }
     }
 
     _sensors.update();

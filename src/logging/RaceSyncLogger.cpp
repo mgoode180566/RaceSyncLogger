@@ -1,39 +1,56 @@
 #include "RaceSyncLogger.h"
+
 #include "../config/RaceSyncConfig.h"
+
 
 bool RaceSyncLogger::begin(
     RaceSyncStorage& storage)
 {
-    _storage = &storage;
-    return storage.ready();
+    _storage =
+        &storage;
+
+    return
+        storage.ready();
 }
+
 
 bool RaceSyncLogger::recording() const
 {
-    return _recording;
+    return
+        _recording;
 }
+
 
 const String& RaceSyncLogger::currentFilename() const
 {
-    return _filename;
+    return
+        _filename;
 }
+
 
 uint32_t RaceSyncLogger::sampleCount() const
 {
-    return _sampleCount;
+    return
+        _sampleCount;
 }
+
 
 uint32_t RaceSyncLogger::storageWriteErrors() const
 {
-    return _writeErrors;
+    return
+        _writeErrors;
 }
+
 
 uint32_t RaceSyncLogger::lastWriteAgeMs() const
 {
-    return _lastWriteMs == 0
-        ? UINT32_MAX
-        : millis() - _lastWriteMs;
+    return
+        _lastWriteMs == 0
+            ? UINT32_MAX
+            : millis() -
+                _lastWriteMs;
 }
+
 
 uint32_t RaceSyncLogger::recordingSeconds() const
 {
@@ -44,9 +61,11 @@ uint32_t RaceSyncLogger::recordingSeconds() const
         ? (
             millis() -
             _startedMs
-        ) / 1000
+        ) /
+        1000
         : 0;
 }
+
 
 String RaceSyncLogger::createFilename(
     const Telemetry& telemetry,
@@ -81,7 +100,8 @@ String RaceSyncLogger::createFilename(
 
             "RS_%s_%010lu.vbo",
 
-            mode == DataMode::DEMO
+            mode ==
+                DataMode::DEMO
                 ? "DEMO"
                 : "LIVE",
 
@@ -89,44 +109,63 @@ String RaceSyncLogger::createFilename(
         );
     }
 
-    return String(buffer);
+    return
+        String(buffer);
 }
 
+
 void RaceSyncLogger::writeHeader(
-    File& f,
+    File& file,
     DataMode mode)
 {
-    f.println("[header]");
-    f.println("satellites");
-    f.println("time");
-    f.println("latitude");
-    f.println("longitude");
-    f.println("velocity kmh");
-    f.println("heading");
-    f.println("height");
-    f.println("vertical velocity m/s");
-    f.println("sampleperiod");
-    f.println("solution type");
-    f.println("avifileindex");
-    f.println("avisynctime");
-    f.println("ComboAcc");
-    f.println("ADC3 Oil Pressure");
-    f.println("ADC2 Oil Temp");
-    f.println("ADC1 Water Temp");
-    f.println("Revs");
-    f.println("ADC4 Fuel Pressure");
-    f.println("Combo_G");
+    file.println("[header]");
+    file.println("satellites");
+    file.println("time");
+    file.println("latitude");
+    file.println("longitude");
+    file.println("velocity kmh");
+    file.println("heading");
+    file.println("height");
+    file.println("vertical velocity m/s");
+    file.println("sampleperiod");
+    file.println("solution type");
+    file.println("avifileindex");
+    file.println("avisynctime");
+    file.println("ComboAcc");
+    file.println("ADC3 Oil Pressure");
+    file.println("ADC2 Oil Temp");
+    file.println("ADC1 Water Temp");
+    file.println("Revs");
+    file.println("ADC4 Fuel Pressure");
+    file.println("Combo_G");
 
-    f.println();
-    f.println("[comments]");
-    f.println("RaceSync ESP32 Logger");
-    f.print("Source: ");
-    f.println(dataModeName(mode));
+    file.println();
 
-    f.println();
-    f.println("[column names]");
+    file.println(
+        "[comments]"
+    );
 
-    f.println(
+    file.println(
+        "RaceSync ESP32 Logger"
+    );
+
+    file.print(
+        "Source: "
+    );
+
+    file.println(
+        dataModeName(
+            mode
+        )
+    );
+
+    file.println();
+
+    file.println(
+        "[column names]"
+    );
+
+    file.println(
         "sats time lat long velocity heading height "
         "vert-vel Tsample solution_type "
         "avifileindex avitime "
@@ -135,9 +174,13 @@ void RaceSyncLogger::writeHeader(
         "Revs ADC4_Fuel_Pressure Combo_G"
     );
 
-    f.println();
-    f.println("[data]");
+    file.println();
+
+    file.println(
+        "[data]"
+    );
 }
+
 
 String RaceSyncLogger::createVBoxLine(
     const Telemetry& telemetry) const
@@ -189,15 +232,101 @@ String RaceSyncLogger::createVBoxLine(
         telemetry.comboG
     );
 
-    return String(line);
+    return
+        String(line);
 }
+
+
+bool RaceSyncLogger::storageHasSafeFreeSpace()
+{
+    if (
+        _storage == nullptr ||
+        !_storage->ready()
+    )
+    {
+        return false;
+    }
+
+    // Checking filesystem usage on every 25 Hz sample is unnecessary.
+    // Re-check at most once per second.
+    uint32_t now =
+        millis();
+
+    if (
+        _lastStorageCheckMs != 0 &&
+        now -
+            _lastStorageCheckMs <
+            1000
+    )
+    {
+        return true;
+    }
+
+    _lastStorageCheckMs =
+        now;
+
+    uint64_t freeBytes =
+        _storage->freeBytes();
+
+    if (
+        freeBytes <
+        RaceSyncConfig::MIN_FREE_STORAGE_BYTES
+    )
+    {
+        Serial.print(
+            "[LOGGER] Low storage - "
+        );
+
+        Serial.print(
+            (unsigned long)(
+                freeBytes /
+                1024
+            )
+        );
+
+        Serial.println(
+            " KB free. Closing session."
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
 
 bool RaceSyncLogger::start(
     const Telemetry& telemetry,
     DataMode mode)
 {
     if (_recording)
+    {
         return true;
+    }
+
+    if (
+        _storage == nullptr ||
+        !_storage->ready()
+    )
+    {
+        Serial.println(
+            "[LOGGER] Storage not ready"
+        );
+
+        return false;
+    }
+
+    if (
+        _storage->freeBytes() <
+        RaceSyncConfig::MIN_FREE_STORAGE_BYTES
+    )
+    {
+        Serial.println(
+            "[LOGGER] Insufficient free storage - recording not started"
+        );
+
+        return false;
+    }
 
     _filename =
         createFilename(
@@ -213,9 +342,11 @@ bool RaceSyncLogger::start(
     if (!_file)
     {
         _writeErrors++;
+
         Serial.println(
             "[LOGGER] Unable to create session"
         );
+
         return false;
     }
 
@@ -226,42 +357,97 @@ bool RaceSyncLogger::start(
 
     _file.flush();
 
-    _sampleCount = 0;
-    _belowSpeedSince = 0;
-    _lastFlush = millis();
-    _lastWriteMs = 0;
-    _startedMs = millis();
+    _sampleCount =
+        0;
 
-    _recording = true;
+    _belowSpeedSince =
+        0;
 
-    Serial.print("[LOGGER] Started: ");
-    Serial.println(_filename);
+    _lastFlush =
+        millis();
+
+    _lastWriteMs =
+        0;
+
+    _startedMs =
+        millis();
+
+    _lastStorageCheckMs =
+        0;
+
+    _recording =
+        true;
+
+    Serial.print(
+        "[LOGGER] Started: "
+    );
+
+    Serial.println(
+        _filename
+    );
 
     return true;
 }
 
+
 void RaceSyncLogger::stop()
 {
     if (!_recording)
+    {
         return;
+    }
 
-    _file.flush();
-    _file.close();
+    if (_file)
+    {
+        _file.flush();
+        _file.close();
+    }
 
-    _recording = false;
-    _belowSpeedSince = 0;
+    _recording =
+        false;
 
-    Serial.print("[LOGGER] Closed: ");
-    Serial.print(_filename);
-    Serial.print(" samples=");
-    Serial.println(_sampleCount);
+    _belowSpeedSince =
+        0;
+
+    Serial.print(
+        "[LOGGER] Closed: "
+    );
+
+    Serial.print(
+        _filename
+    );
+
+    Serial.print(
+        " samples="
+    );
+
+    Serial.println(
+        _sampleCount
+    );
 }
+
+
+void RaceSyncLogger::forceStop()
+{
+    stop();
+}
+
 
 void RaceSyncLogger::writeSample(
     const Telemetry& telemetry)
 {
     if (!_recording)
+    {
         return;
+    }
+
+    if (
+        !storageHasSafeFreeSpace()
+    )
+    {
+        stop();
+        return;
+    }
 
     size_t written =
         _file.println(
@@ -273,14 +459,23 @@ void RaceSyncLogger::writeSample(
     if (written == 0)
     {
         _writeErrors++;
-        Serial.println("[LOGGER] Write failed");
+
+        Serial.println(
+            "[LOGGER] Write failed - closing session"
+        );
+
+        stop();
+
         return;
     }
 
     _sampleCount++;
-    _lastWriteMs = millis();
 
-    uint32_t now = millis();
+    _lastWriteMs =
+        millis();
+
+    uint32_t now =
+        millis();
 
     if (
         now -
@@ -289,16 +484,21 @@ void RaceSyncLogger::writeSample(
     )
     {
         _file.flush();
-        _lastFlush = now;
+
+        _lastFlush =
+            now;
     }
 }
+
 
 void RaceSyncLogger::processSample(
     const Telemetry& telemetry,
     DataMode mode)
 {
     if (!telemetry.valid)
+    {
         return;
+    }
 
     if (
         !_recording &&
@@ -313,17 +513,34 @@ void RaceSyncLogger::processSample(
     }
 
     if (!_recording)
+    {
         return;
+    }
 
-    writeSample(telemetry);
+    writeSample(
+        telemetry
+    );
+
+    // writeSample() may have closed the logger because storage
+    // became low or a write failed.
+    if (!_recording)
+    {
+        return;
+    }
 
     if (
         telemetry.velocityKmh <=
         RaceSyncConfig::LOG_STOP_SPEED_KMH
     )
     {
-        if (_belowSpeedSince == 0)
-            _belowSpeedSince = millis();
+        if (
+            _belowSpeedSince ==
+            0
+        )
+        {
+            _belowSpeedSince =
+                millis();
+        }
 
         if (
             millis() -
@@ -336,6 +553,7 @@ void RaceSyncLogger::processSample(
     }
     else
     {
-        _belowSpeedSince = 0;
+        _belowSpeedSince =
+            0;
     }
 }
