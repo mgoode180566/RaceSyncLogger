@@ -38,7 +38,7 @@ void RaceSyncApi::addCorsHeaders()
 
     _server.sendHeader(
         "Access-Control-Allow-Methods",
-        "GET,POST,OPTIONS"
+        "GET,DELETE,OPTIONS"
     );
 
     _server.sendHeader(
@@ -550,7 +550,6 @@ void RaceSyncApi::handleStatus()
     health["system"] =
         "OK";
 
-
     if (
         _mode ==
         DataMode::DEMO
@@ -581,7 +580,6 @@ void RaceSyncApi::handleStatus()
             "OK";
     }
 
-
     if (
         !_storage.ready()
     )
@@ -611,7 +609,6 @@ void RaceSyncApi::handleStatus()
             "OK";
     }
 
-
     health["logger"] =
         _logger.recording()
             ? "RECORDING"
@@ -620,7 +617,6 @@ void RaceSyncApi::handleStatus()
     health["wifi"] =
         "OK";
 
-
     bool systemHealthy =
         _storage.ready() &&
         usedPercent <
@@ -628,16 +624,11 @@ void RaceSyncApi::handleStatus()
         ESP.getFreeHeap() >
             RaceSyncConfig::MIN_HEALTHY_HEAP_BYTES;
 
-
     health["overall"] =
         systemHealthy
             ? "OK"
             : "WARNING";
 
-
-    // --------------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------------
 
     String response;
 
@@ -773,6 +764,10 @@ void RaceSyncApi::handleTelemetry()
 }
 
 
+// ------------------------------------------------------------
+// SESSION LIST
+// ------------------------------------------------------------
+
 void RaceSyncApi::handleSessions()
 {
     JsonDocument doc;
@@ -780,16 +775,26 @@ void RaceSyncApi::handleSessions()
     doc["device"] =
         RaceSyncConfig::PRODUCT;
 
-    doc["count"] =
-        _storage.sessionCount();
-
     JsonArray sessions =
         doc["sessions"]
             .to<JsonArray>();
 
+    String activeFilename =
+        _logger.recording()
+            ? _logger.currentFilename()
+            : "";
+
+    String demoFilename =
+        _simulator.sourceFilename();
+
     _storage.addSessionsToJson(
-        sessions
+        sessions,
+        activeFilename,
+        demoFilename
     );
+
+    doc["count"] =
+        sessions.size();
 
     String response;
 
@@ -805,16 +810,148 @@ void RaceSyncApi::handleSessions()
 }
 
 
-void RaceSyncApi::handleSessionDownload()
+// ------------------------------------------------------------
+// SESSION URI PARSER
+//
+// /api/sessions/123456789
+// ------------------------------------------------------------
+
+bool RaceSyncApi::parseSessionIdFromUri(
+    uint32_t& sessionId) const
 {
+    sessionId =
+        0;
+
     const String prefix =
         "/api/sessions/";
 
-    String filename =
+    String value =
         _server.uri().substring(
             prefix.length()
         );
 
+    if (
+        value.length() == 0
+    )
+    {
+        return false;
+    }
+
+    for (
+        size_t i = 0;
+        i < value.length();
+        i++
+    )
+    {
+        if (
+            value[i] < '0' ||
+            value[i] > '9'
+        )
+        {
+            return false;
+        }
+    }
+
+    unsigned long parsed =
+        strtoul(
+            value.c_str(),
+            nullptr,
+            10
+        );
+
+    if (
+        parsed == 0
+    )
+    {
+        return false;
+    }
+
+    sessionId =
+        (uint32_t)parsed;
+
+    return true;
+}
+
+
+// ------------------------------------------------------------
+// DOWNLOAD BY SESSION ID
+// ------------------------------------------------------------
+
+void RaceSyncApi::handleSessionDownloadById(
+    uint32_t sessionId)
+{
+    String filename;
+
+    if (
+        !_storage.findSessionById(
+            sessionId,
+            filename
+        )
+    )
+    {
+        sendJson(
+            404,
+            "{\"error\":\"Session not found\"}"
+        );
+
+        return;
+    }
+
+    File file =
+        _storage.openRead(
+            filename
+        );
+
+    if (!file)
+    {
+        sendJson(
+            404,
+            "{\"error\":\"Session file not found\"}"
+        );
+
+        return;
+    }
+
+    addCorsHeaders();
+
+    _server.sendHeader(
+        "Content-Disposition",
+        "attachment; filename=\"" +
+        filename +
+        "\""
+    );
+
+    _server.sendHeader(
+        "X-RaceSync-Session-Id",
+        String(
+            sessionId
+        )
+    );
+
+    _server.sendHeader(
+        "Cache-Control",
+        "no-store"
+    );
+
+    _server.streamFile(
+        file,
+        "application/octet-stream"
+    );
+
+    file.close();
+}
+
+
+// ------------------------------------------------------------
+// LEGACY FILENAME DOWNLOAD
+//
+// Existing clients using /api/sessions/file.vbo still work.
+// New clients should use the numeric session ID.
+// ------------------------------------------------------------
+
+void RaceSyncApi::handleLegacySessionDownload(
+    const String& filename)
+{
     if (
         !_storage.isSafeVBoxFilename(
             filename
@@ -823,7 +960,7 @@ void RaceSyncApi::handleSessionDownload()
     {
         sendJson(
             400,
-            "{\"error\":\"Invalid filename\"}"
+            "{\"error\":\"Invalid session reference\"}"
         );
 
         return;
@@ -854,6 +991,15 @@ void RaceSyncApi::handleSessionDownload()
     );
 
     _server.sendHeader(
+        "X-RaceSync-Session-Id",
+        String(
+            _storage.sessionIdForFilename(
+                filename
+            )
+        )
+    );
+
+    _server.sendHeader(
         "Cache-Control",
         "no-store"
     );
@@ -866,6 +1012,135 @@ void RaceSyncApi::handleSessionDownload()
     file.close();
 }
 
+
+// ------------------------------------------------------------
+// DELETE BY SESSION ID
+// ------------------------------------------------------------
+
+void RaceSyncApi::handleSessionDeleteById(
+    uint32_t sessionId)
+{
+    String filename;
+
+    if (
+        !_storage.findSessionById(
+            sessionId,
+            filename
+        )
+    )
+    {
+        sendJson(
+            404,
+            "{\"error\":\"Session not found\"}"
+        );
+
+        return;
+    }
+
+
+    // Never delete the file currently being written.
+
+    if (
+        _logger.recording() &&
+        filename ==
+            _logger.currentFilename()
+    )
+    {
+        sendJson(
+            409,
+            "{\"error\":\"Cannot delete the active recording\"}"
+        );
+
+        return;
+    }
+
+
+    // Never delete the selected demo source. Without this file
+    // DEMO mode would no longer be available after reboot.
+
+    String demoFilename =
+        _simulator.sourceFilename();
+
+    if (
+        demoFilename.length() > 0 &&
+        filename ==
+            demoFilename
+    )
+    {
+        sendJson(
+            403,
+            "{\"error\":\"The demo source is protected and cannot be deleted\"}"
+        );
+
+        return;
+    }
+
+
+    String deletedFilename;
+
+    if (
+        !_storage.deleteSessionById(
+            sessionId,
+            deletedFilename
+        )
+    )
+    {
+        sendJson(
+            500,
+            "{\"error\":\"Unable to delete session\"}"
+        );
+
+        return;
+    }
+
+
+    JsonDocument doc;
+
+    doc["deleted"] =
+        true;
+
+    doc["id"] =
+        sessionId;
+
+    doc["file"] =
+        deletedFilename;
+
+    doc["freeBytes"] =
+        _storage.freeBytes();
+
+    doc["usedBytes"] =
+        _storage.usedBytes();
+
+    double usedPercent =
+        _storage.totalBytes() > 0
+            ? (
+                _storage.usedBytes() *
+                100.0
+            ) /
+                _storage.totalBytes()
+            : 0.0;
+
+    doc["usedPercent"] =
+        usedPercent;
+
+
+    String response;
+
+    serializeJson(
+        doc,
+        response
+    );
+
+    sendJson(
+        200,
+        response
+    );
+}
+
+
+// ------------------------------------------------------------
+// ROUTES
+// ------------------------------------------------------------
 
 void RaceSyncApi::begin()
 {
@@ -909,6 +1184,10 @@ void RaceSyncApi::begin()
         }
     );
 
+
+    // Dynamic ID endpoints are handled here because UriBraces
+    // is not available in every ESP32 Arduino WebServer build.
+
     _server.onNotFound(
         [this]()
         {
@@ -916,21 +1195,88 @@ void RaceSyncApi::begin()
                 "/api/sessions/";
 
             if (
-                _server.method() ==
-                    HTTP_GET &&
                 _server.uri().startsWith(
                     prefix
                 )
             )
             {
-                handleSessionDownload();
+                uint32_t sessionId =
+                    0;
 
-                return;
+                bool isId =
+                    parseSessionIdFromUri(
+                        sessionId
+                    );
+
+
+                // GET /api/sessions/{id}
+
+                if (
+                    _server.method() ==
+                        HTTP_GET &&
+                    isId
+                )
+                {
+                    handleSessionDownloadById(
+                        sessionId
+                    );
+
+                    return;
+                }
+
+
+                // DELETE /api/sessions/{id}
+
+                if (
+                    _server.method() ==
+                        HTTP_DELETE
+                )
+                {
+                    if (!isId)
+                    {
+                        sendJson(
+                            400,
+                            "{\"error\":\"DELETE requires a numeric session id\"}"
+                        );
+
+                        return;
+                    }
+
+                    handleSessionDeleteById(
+                        sessionId
+                    );
+
+                    return;
+                }
+
+
+                // Backward-compatible filename download.
+
+                if (
+                    _server.method() ==
+                        HTTP_GET &&
+                    !isId
+                )
+                {
+                    String filename =
+                        _server.uri().substring(
+                            prefix.length()
+                        );
+
+                    handleLegacySessionDownload(
+                        filename
+                    );
+
+                    return;
+                }
             }
+
+
+            // CORS pre-flight.
 
             if (
                 _server.method() ==
-                HTTP_OPTIONS
+                    HTTP_OPTIONS
             )
             {
                 addCorsHeaders();
@@ -941,6 +1287,7 @@ void RaceSyncApi::begin()
 
                 return;
             }
+
 
             sendJson(
                 404,
