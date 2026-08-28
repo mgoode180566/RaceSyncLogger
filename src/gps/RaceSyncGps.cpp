@@ -25,6 +25,8 @@ void RaceSyncGps::update(Telemetry& telemetry)
         captureDiagnosticByte(value);
         parseByte(value, telemetry);
     }
+
+    printDiagnosticIfNeeded();
 }
 
 bool RaceSyncGps::connected() const
@@ -62,6 +64,29 @@ void RaceSyncGps::captureDiagnosticByte(uint8_t data)
     _diagnosticWrite = (_diagnosticWrite + 1) % DIAGNOSTIC_SIZE;
     if (_diagnosticCount < DIAGNOSTIC_SIZE)
         _diagnosticCount++;
+}
+
+void RaceSyncGps::printDiagnosticIfNeeded()
+{
+    // Temporary diagnostic: while no NAV-PVT packets have been decoded,
+    // print the latest raw UART sample every five seconds.
+    if (_packetCount != 0 || _diagnosticCount == 0)
+        return;
+
+    uint32_t now = millis();
+    if (_lastDiagnosticPrintMs != 0 && now - _lastDiagnosticPrintMs < 5000)
+        return;
+
+    _lastDiagnosticPrintMs = now;
+
+    Serial.printf("[GPS-DIAG] bytes=%llu packets=%llu checksumErrors=%llu\n",
+                  (unsigned long long)_bytesReceived,
+                  (unsigned long long)_packetCount,
+                  (unsigned long long)_checksumErrors);
+    Serial.print("[GPS-DIAG] HEX: ");
+    Serial.println(diagnosticHex());
+    Serial.print("[GPS-DIAG] ASCII: ");
+    Serial.println(diagnosticAscii());
 }
 
 String RaceSyncGps::diagnosticHex() const
