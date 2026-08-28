@@ -11,6 +11,11 @@ namespace RaceSyncConfig
 
     constexpr int GPS_RX_PIN = 16;
     constexpr int GPS_TX_PIN = 17;
+
+    // The fitted MG-902 has been verified on the bench to boot at 9600 baud
+    // and output NMEA. RaceSyncGps starts at this rate and configures the
+    // receiver for the high-rate UBX stream used by the logger.
+    constexpr uint32_t GPS_STARTUP_BAUD = 9600;
     constexpr uint32_t GPS_BAUD = 115200;
 
     constexpr uint32_t GPS_BOOT_GRACE_MS = 3000;
