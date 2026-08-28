@@ -15,6 +15,11 @@ public:
     uint64_t packetCount() const;
     uint64_t checksumErrors() const;
 
+    // Temporary GPS UART diagnostics. Keeps the most recent 128 bytes so the
+    // actual MG-902 output protocol can be identified without changing wiring.
+    String diagnosticHex() const;
+    String diagnosticAscii() const;
+
 private:
     enum class UbxState
     {
@@ -51,8 +56,14 @@ private:
     uint64_t _packetCount = 0;
     uint64_t _checksumErrors = 0;
 
+    static constexpr size_t DIAGNOSTIC_SIZE = 128;
+    uint8_t _diagnostic[DIAGNOSTIC_SIZE] = {};
+    size_t _diagnosticWrite = 0;
+    size_t _diagnosticCount = 0;
+
     bool _newSample = false;
 
+    void captureDiagnosticByte(uint8_t data);
     void parseByte(uint8_t data, Telemetry& telemetry);
     void processNavPvt(Telemetry& telemetry);
 
