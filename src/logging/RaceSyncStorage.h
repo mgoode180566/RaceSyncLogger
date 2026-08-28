@@ -7,6 +7,10 @@
 class RaceSyncStorage
 {
 public:
+    // Prefer the removable SD card for VBO sessions. If it cannot be mounted,
+    // fall back to LittleFS so RaceSync remains usable for diagnostics.
+    bool begin();
+    bool beginSd();
     bool beginNvm();
     bool ready() const;
 
@@ -21,18 +25,13 @@ public:
 
     uint32_t sessionCount();
 
-    // Stable opaque ID derived from the session filename.
-    // The ID remains unchanged across reboots while the filename
-    // remains unchanged. This avoids exposing filenames in API URLs.
     uint32_t sessionIdForFilename(const String& filename) const;
 
-    // Resolve an opaque session ID back to the stored VBO filename.
     bool findSessionById(
         uint32_t sessionId,
         String& filename
     );
 
-    // Delete a VBO identified by session ID.
     bool deleteSessionById(
         uint32_t sessionId,
         String& deletedFilename
@@ -40,9 +39,6 @@ public:
 
     String findDemoSource();
 
-    // Build the API session list.
-    // activeFilename is protected while logging.
-    // protectedFilename is normally the demo source VBO.
     void addSessionsToJson(
         JsonArray sessions,
         const String& activeFilename = "",
@@ -57,6 +53,7 @@ private:
     fs::FS* _fs = nullptr;
     String _root = "/";
     bool _ready = false;
+    bool _usingSd = false;
 
     String basename(const String& path) const;
     String pathFor(const String& filename) const;
