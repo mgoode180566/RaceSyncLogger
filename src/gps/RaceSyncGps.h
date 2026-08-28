@@ -60,10 +60,12 @@ private:
     uint8_t _diagnostic[DIAGNOSTIC_SIZE] = {};
     size_t _diagnosticWrite = 0;
     size_t _diagnosticCount = 0;
+    uint32_t _lastDiagnosticPrintMs = 0;
 
     bool _newSample = false;
 
     void captureDiagnosticByte(uint8_t data);
+    void printDiagnosticIfNeeded();
     void parseByte(uint8_t data, Telemetry& telemetry);
     void processNavPvt(Telemetry& telemetry);
 
