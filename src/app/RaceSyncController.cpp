@@ -55,7 +55,9 @@ void RaceSyncController::begin()
 
     _wifi.begin();
 
-    _storage.beginNvm();
+    // Prefer the removable SD card for session storage. If the card is absent
+    // or cannot be mounted RaceSync falls back to LittleFS for diagnostics.
+    _storage.begin();
 
     _logger.begin(
         _storage
@@ -84,8 +86,6 @@ void RaceSyncController::updateDataMode()
 
     if (gpsPresent)
     {
-        // Do not switch source while the logger is in the middle
-        // of recording a demo session.
         if (
             !_logger.recording() ||
             _mode ==
@@ -153,7 +153,6 @@ void RaceSyncController::update()
         _gps.connected()
     )
     {
-        // NAV-PVT increments sampleIndex only when a new packet arrives.
         static uint32_t lastLiveIndex =
             0;
 
@@ -178,15 +177,6 @@ void RaceSyncController::update()
             _simulator.update(
                 _telemetry
             );
-
-        // ----------------------------------------------------
-        // IMPORTANT:
-        //
-        // Demo replay is now one-shot. When the source VBO
-        // reaches EOF, immediately close the generated session.
-        //
-        // This prevents RS_DEMO_*.vbo from growing forever.
-        // ----------------------------------------------------
 
         if (
             _simulator.finished()
