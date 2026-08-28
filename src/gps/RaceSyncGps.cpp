@@ -22,6 +22,7 @@ void RaceSyncGps::update(Telemetry& telemetry)
     {
         uint8_t value = _serial.read();
         _bytesReceived++;
+        captureDiagnosticByte(value);
         parseByte(value, telemetry);
     }
 }
@@ -53,6 +54,54 @@ uint64_t RaceSyncGps::packetCount() const
 uint64_t RaceSyncGps::checksumErrors() const
 {
     return _checksumErrors;
+}
+
+void RaceSyncGps::captureDiagnosticByte(uint8_t data)
+{
+    _diagnostic[_diagnosticWrite] = data;
+    _diagnosticWrite = (_diagnosticWrite + 1) % DIAGNOSTIC_SIZE;
+    if (_diagnosticCount < DIAGNOSTIC_SIZE)
+        _diagnosticCount++;
+}
+
+String RaceSyncGps::diagnosticHex() const
+{
+    String result;
+    result.reserve(_diagnosticCount * 3);
+
+    size_t start = (_diagnosticWrite + DIAGNOSTIC_SIZE - _diagnosticCount) % DIAGNOSTIC_SIZE;
+    static const char hex[] = "0123456789ABCDEF";
+
+    for (size_t i = 0; i < _diagnosticCount; ++i)
+    {
+        uint8_t value = _diagnostic[(start + i) % DIAGNOSTIC_SIZE];
+        if (i) result += ' ';
+        result += hex[(value >> 4) & 0x0F];
+        result += hex[value & 0x0F];
+    }
+
+    return result;
+}
+
+String RaceSyncGps::diagnosticAscii() const
+{
+    String result;
+    result.reserve(_diagnosticCount);
+
+    size_t start = (_diagnosticWrite + DIAGNOSTIC_SIZE - _diagnosticCount) % DIAGNOSTIC_SIZE;
+
+    for (size_t i = 0; i < _diagnosticCount; ++i)
+    {
+        uint8_t value = _diagnostic[(start + i) % DIAGNOSTIC_SIZE];
+        if (value >= 32 && value <= 126)
+            result += static_cast<char>(value);
+        else if (value == '\r' || value == '\n')
+            result += ' ';
+        else
+            result += '.';
+    }
+
+    return result;
 }
 
 uint16_t RaceSyncGps::readU16(const uint8_t* p)
