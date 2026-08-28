@@ -21,6 +21,14 @@ namespace RaceSyncConfig
     constexpr uint32_t GPS_BOOT_GRACE_MS = 3000;
     constexpr uint32_t GPS_STALE_MS = 3000;
 
+    // microSD card - SPI mode.
+    // Wiring: CS=10, MOSI=11, SCK=12, MISO=13.
+    constexpr int SD_CS_PIN = 10;
+    constexpr int SD_MOSI_PIN = 11;
+    constexpr int SD_SCK_PIN = 12;
+    constexpr int SD_MISO_PIN = 13;
+    constexpr uint32_t SD_SPI_FREQUENCY = 20000000;
+
     constexpr double LOG_START_SPEED_KMH = 10.0;
     constexpr double LOG_STOP_SPEED_KMH = 3.0;
     constexpr uint32_t LOG_STOP_DELAY_MS = 60000;
