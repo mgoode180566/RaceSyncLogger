@@ -22,6 +22,24 @@ bool RaceSyncStorage::beginNvm()
 bool RaceSyncStorage::ready() const { return _ready; }
 String RaceSyncStorage::storageType() const { return _usingSd ? "SD" : "NVM"; }
 String RaceSyncStorage::filesystemName() const { return _usingSd ? "FAT" : "LittleFS"; }
+bool RaceSyncStorage::usingSd() const { return _ready && _usingSd; }
+
+String RaceSyncStorage::cardTypeName() const
+{
+    if (!usingSd()) return "NONE";
+    switch (SD.cardType()) {
+        case CARD_MMC: return "MMC";
+        case CARD_SD: return "SDSC";
+        case CARD_SDHC: return "SDHC/SDXC";
+        case CARD_NONE: return "NONE";
+        default: return "UNKNOWN";
+    }
+}
+
+uint64_t RaceSyncStorage::cardSizeBytes() const
+{
+    return usingSd() ? SD.cardSize() : 0;
+}
 
 String RaceSyncStorage::basename(const String& path) const
 {
