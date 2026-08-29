@@ -19,8 +19,11 @@ public:
     uint64_t cardSizeBytes() const;
 
     bool isSafeVBoxFilename(const String& filename) const;
+    bool isSafeFilename(const String& filename) const;
+    bool fileExists(const String& filename) const;
     bool exists(const String& filename) const;
     File openRead(const String& filename);
+    File openFileRead(const String& filename);
     File openWrite(const String& filename);
     File openFileWrite(const String& filename);
     uint32_t sessionCount();
