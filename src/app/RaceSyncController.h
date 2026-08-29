@@ -35,6 +35,11 @@ private:
 
     RaceSyncApi _api;
 
+    uint32_t _loggingLedCycleStartedMs = 0;
+    bool _loggingLedOn = false;
+
     void updateDataMode();
     void incrementBootCount();
+    void updateLoggingLed();
+    void setLoggingLed(bool on);
 };
