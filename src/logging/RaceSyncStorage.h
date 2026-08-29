@@ -22,6 +22,7 @@ public:
     bool exists(const String& filename) const;
     File openRead(const String& filename);
     File openWrite(const String& filename);
+    File openFileWrite(const String& filename);
     uint32_t sessionCount();
     uint32_t sessionIdForFilename(const String& filename) const;
     bool findSessionById(uint32_t sessionId, String& filename);
