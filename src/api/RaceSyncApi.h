@@ -28,8 +28,7 @@ public:
     void update();
 
 private:
-    WebServer _server =
-        WebServer(80);
+    WebServer _server = WebServer(80);
 
     RaceSyncStorage& _storage;
     RaceSyncLogger& _logger;
@@ -41,41 +40,29 @@ private:
     uint32_t& _bootCount;
 
     void addCorsHeaders();
-    void sendJson(
-        int status,
-        const String& body
-    );
+    void sendJson(int status, const String& body);
 
     void handleStatus();
     void handleLocation();
     void handleTelemetry();
-
     void handleSessions();
 
     // GET /api/sessions/{id}
-    void handleSessionDownloadById(
-        uint32_t sessionId
-    );
+    void handleSessionDownloadById(uint32_t sessionId);
+
+    // GET /api/sessions/{id}/kml
+    void handleSessionKmlDownloadById(uint32_t sessionId);
 
     // DELETE /api/sessions/{id}
-    void handleSessionDeleteById(
-        uint32_t sessionId
-    );
+    void handleSessionDeleteById(uint32_t sessionId);
 
     // Kept for compatibility with existing clients while
     // transitioning away from filename-based URLs.
-    void handleLegacySessionDownload(
-        const String& filename
-    );
+    void handleLegacySessionDownload(const String& filename);
 
-    bool parseSessionIdFromUri(
-        uint32_t& sessionId
-    ) const;
+    bool parseSessionIdFromUri(uint32_t& sessionId) const;
 
     static String formatUptime();
-    static String formatVBoxTime(
-        double rawTime
-    );
-
+    static String formatVBoxTime(double rawTime);
     static const char* resetReasonName();
 };
