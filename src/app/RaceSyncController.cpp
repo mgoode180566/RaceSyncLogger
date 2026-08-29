@@ -38,6 +38,60 @@ void RaceSyncController::incrementBootCount()
 }
 
 
+void RaceSyncController::setLoggingLed(bool on)
+{
+#if defined(RGB_BUILTIN)
+    // ESP32-S3 DevKitC-1 onboard addressable RGB LED.
+    // Use a modest green level so the logging indicator is clearly visible
+    // without being distracting on the motorcycle.
+    rgbLedWrite(RGB_BUILTIN, 0, on ? 32 : 0, 0);
+#elif defined(LED_BUILTIN)
+    digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
+#else
+    (void)on;
+#endif
+
+    _loggingLedOn = on;
+}
+
+
+void RaceSyncController::updateLoggingLed()
+{
+    if (!_logger.recording())
+    {
+        if (_loggingLedOn)
+        {
+            setLoggingLed(false);
+        }
+
+        _loggingLedCycleStartedMs = 0;
+        return;
+    }
+
+    const uint32_t now = millis();
+
+    if (_loggingLedCycleStartedMs == 0)
+    {
+        _loggingLedCycleStartedMs = now;
+        setLoggingLed(true);
+        return;
+    }
+
+    const uint32_t elapsed = now - _loggingLedCycleStartedMs;
+
+    // 100 ms flash at the start of every one-second logging cycle.
+    if (elapsed >= 1000)
+    {
+        _loggingLedCycleStartedMs = now;
+        setLoggingLed(true);
+    }
+    else if (elapsed >= 100 && _loggingLedOn)
+    {
+        setLoggingLed(false);
+    }
+}
+
+
 void RaceSyncController::begin()
 {
     Serial.println();
@@ -50,6 +104,11 @@ void RaceSyncController::begin()
     Serial.println(
         "============================="
     );
+
+#if defined(LED_BUILTIN) && !defined(RGB_BUILTIN)
+    pinMode(LED_BUILTIN, OUTPUT);
+#endif
+    setLoggingLed(false);
 
     incrementBootCount();
 
@@ -200,6 +259,8 @@ void RaceSyncController::update()
             _mode
         );
     }
+
+    updateLoggingLed();
 
     _api.update();
 
