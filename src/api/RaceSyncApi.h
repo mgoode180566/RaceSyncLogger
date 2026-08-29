@@ -25,6 +25,7 @@ public:
     );
 
     void begin();
+    void beginKmlDownloadRoute();
     void update();
 
 private:
@@ -50,16 +51,13 @@ private:
     // GET /api/sessions/{id}
     void handleSessionDownloadById(uint32_t sessionId);
 
-    // GET /api/sessions/{id}/kml
+    // GET /api/session-kml?id={id}
     void handleSessionKmlDownloadById(uint32_t sessionId);
 
     // DELETE /api/sessions/{id}
     void handleSessionDeleteById(uint32_t sessionId);
 
-    // Kept for compatibility with existing clients while
-    // transitioning away from filename-based URLs.
     void handleLegacySessionDownload(const String& filename);
-
     bool parseSessionIdFromUri(uint32_t& sessionId) const;
 
     static String formatUptime();
