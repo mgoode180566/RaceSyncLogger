@@ -49,10 +49,15 @@ bool RaceSyncStorage::isVBox(const String& filename) const
     String lower = filename; lower.toLowerCase(); return lower.endsWith(".vbo");
 }
 
-bool RaceSyncStorage::isSafeVBoxFilename(const String& filename) const
+bool RaceSyncStorage::isSafeFilename(const String& filename) const
 {
     return filename.length() > 0 && filename.indexOf("..") < 0 &&
-           filename.indexOf('/') < 0 && filename.indexOf('\\') < 0 && isVBox(filename);
+           filename.indexOf('/') < 0 && filename.indexOf('\\') < 0;
+}
+
+bool RaceSyncStorage::isSafeVBoxFilename(const String& filename) const
+{
+    return isSafeFilename(filename) && isVBox(filename);
 }
 
 String RaceSyncStorage::pathFor(const String& filename) const
@@ -60,14 +65,26 @@ String RaceSyncStorage::pathFor(const String& filename) const
     return _root == "/" ? "/" + filename : _root + "/" + filename;
 }
 
+bool RaceSyncStorage::fileExists(const String& filename) const
+{
+    return _ready && _fs != nullptr && isSafeFilename(filename) && _fs->exists(pathFor(filename));
+}
+
 bool RaceSyncStorage::exists(const String& filename) const
 {
-    return _ready && _fs != nullptr && isSafeVBoxFilename(filename) && _fs->exists(pathFor(filename));
+    return isSafeVBoxFilename(filename) && fileExists(filename);
+}
+
+File RaceSyncStorage::openFileRead(const String& filename)
+{
+    if (!fileExists(filename)) return File();
+    return _fs->open(pathFor(filename), FILE_READ);
 }
 
 File RaceSyncStorage::openRead(const String& filename)
 {
-    if (!exists(filename)) return File(); return _fs->open(pathFor(filename), FILE_READ);
+    if (!isSafeVBoxFilename(filename)) return File();
+    return openFileRead(filename);
 }
 
 File RaceSyncStorage::openWrite(const String& filename)
@@ -78,8 +95,7 @@ File RaceSyncStorage::openWrite(const String& filename)
 
 File RaceSyncStorage::openFileWrite(const String& filename)
 {
-    if (!_ready || _fs == nullptr || filename.length() == 0 || filename.indexOf("..") >= 0 ||
-        filename.indexOf('/') >= 0 || filename.indexOf('\\') >= 0) return File();
+    if (!_ready || _fs == nullptr || !isSafeFilename(filename)) return File();
     return _fs->open(pathFor(filename), FILE_WRITE);
 }
 
@@ -150,11 +166,15 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
                 bool active = activeFilename.length() && filename == activeFilename;
                 bool protectedFile = protectedFilename.length() && filename == protectedFilename;
                 bool deletable = !active && !protectedFile;
+                String kmlFilename = filename.substring(0, filename.length() - 4) + ".kml";
+                bool hasKml = fileExists(kmlFilename);
                 JsonObject session = sessions.add<JsonObject>();
                 session["id"] = id; session["file"] = filename; session["sizeBytes"] = file.size();
                 session["complete"] = !active; session["active"] = active; session["protected"] = protectedFile;
                 session["deletable"] = deletable; session["generatedByRaceSync"] = filename.startsWith("RS_");
                 session["downloadUrl"] = "/api/sessions/" + String(id);
+                session["hasKml"] = hasKml;
+                if (hasKml) session["kmlDownloadUrl"] = "/api/sessions/" + String(id) + "/kml";
                 if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
             }
         }
