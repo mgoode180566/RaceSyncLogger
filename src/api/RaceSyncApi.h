@@ -26,11 +26,11 @@ public:
 
     void begin();
     void beginKmlDownloadRoute();
+    void beginWebUiRoute();
     void update();
 
 private:
     WebServer _server = WebServer(80);
-
     RaceSyncStorage& _storage;
     RaceSyncLogger& _logger;
     RaceSyncGps& _gps;
@@ -42,24 +42,15 @@ private:
 
     void addCorsHeaders();
     void sendJson(int status, const String& body);
-
     void handleStatus();
     void handleLocation();
     void handleTelemetry();
     void handleSessions();
-
-    // GET /api/sessions/{id}
     void handleSessionDownloadById(uint32_t sessionId);
-
-    // GET /api/session-kml?id={id}
     void handleSessionKmlDownloadById(uint32_t sessionId);
-
-    // DELETE /api/sessions/{id}
     void handleSessionDeleteById(uint32_t sessionId);
-
     void handleLegacySessionDownload(const String& filename);
     bool parseSessionIdFromUri(uint32_t& sessionId) const;
-
     static String formatUptime();
     static String formatVBoxTime(double rawTime);
     static const char* resetReasonName();
