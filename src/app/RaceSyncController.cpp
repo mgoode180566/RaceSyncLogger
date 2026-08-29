@@ -28,94 +28,41 @@ void RaceSyncController::setLoggingLed(bool on)
 
 void RaceSyncController::updateLoggingLed()
 {
-    if (!_logger.recording()) {
-        if (_loggingLedOn) setLoggingLed(false);
-        _loggingLedCycleStartedMs = 0;
-        return;
-    }
-
+    if (!_logger.recording()) { if (_loggingLedOn) setLoggingLed(false); _loggingLedCycleStartedMs = 0; return; }
     const uint32_t now = millis();
-    if (_loggingLedCycleStartedMs == 0) {
-        _loggingLedCycleStartedMs = now;
-        setLoggingLed(true);
-        return;
-    }
-
+    if (_loggingLedCycleStartedMs == 0) { _loggingLedCycleStartedMs = now; setLoggingLed(true); return; }
     const uint32_t elapsed = now - _loggingLedCycleStartedMs;
-    if (elapsed >= 1000) {
-        _loggingLedCycleStartedMs = now;
-        setLoggingLed(true);
-    } else if (elapsed >= 100 && _loggingLedOn) {
-        setLoggingLed(false);
-    }
+    if (elapsed >= 1000) { _loggingLedCycleStartedMs = now; setLoggingLed(true); }
+    else if (elapsed >= 100 && _loggingLedOn) setLoggingLed(false);
 }
 
 void RaceSyncController::begin()
 {
-    Serial.println();
-    Serial.println("=============================");
-    Serial.println(" RaceSync V2.1 Modular");
-    Serial.println("=============================");
-
+    Serial.println(); Serial.println("============================="); Serial.println(" RaceSync V2.1 Modular"); Serial.println("=============================");
 #if defined(LED_BUILTIN) && !defined(RGB_BUILTIN)
     pinMode(LED_BUILTIN, OUTPUT);
 #endif
     setLoggingLed(false);
-
-    incrementBootCount();
-    _wifi.begin();
-    _storage.begin();
-    _logger.begin(_storage);
-    _simulator.begin(_storage);
-    _gps.begin();
-    _sensors.begin();
-    _api.begin();
+    incrementBootCount(); _wifi.begin(); _storage.begin(); _logger.begin(_storage); _simulator.begin(_storage); _gps.begin(); _sensors.begin();
+    // Register auxiliary routes before WebServer::begin().
+    _api.beginWebUiRoute();
     _api.beginKmlDownloadRoute();
-
+    _api.begin();
     Serial.println("[MODE] Waiting for GPS...");
 }
 
 void RaceSyncController::updateDataMode()
 {
     bool gpsPresent = _gps.connected();
-    if (gpsPresent) {
-        if (!_logger.recording() || _mode == DataMode::LIVE) _mode = DataMode::LIVE;
-        return;
-    }
-
-    if (_mode == DataMode::STARTING && millis() >= RaceSyncConfig::GPS_BOOT_GRACE_MS) {
-        if (_simulator.available()) {
-            _mode = DataMode::DEMO;
-            Serial.println("[MODE] GPS absent -> DEMO");
-        }
-    }
-
-    if (_mode == DataMode::LIVE && !_logger.recording() && _simulator.available()) {
-        _mode = DataMode::DEMO;
-        Serial.println("[MODE] GPS lost -> DEMO");
-    }
+    if (gpsPresent) { if (!_logger.recording() || _mode == DataMode::LIVE) _mode = DataMode::LIVE; return; }
+    if (_mode == DataMode::STARTING && millis() >= RaceSyncConfig::GPS_BOOT_GRACE_MS) { if (_simulator.available()) { _mode = DataMode::DEMO; Serial.println("[MODE] GPS absent -> DEMO"); } }
+    if (_mode == DataMode::LIVE && !_logger.recording() && _simulator.available()) { _mode = DataMode::DEMO; Serial.println("[MODE] GPS lost -> DEMO"); }
 }
 
 void RaceSyncController::update()
 {
-    _gps.update(_telemetry);
-    updateDataMode();
-    bool newSample = false;
-
-    if (_mode == DataMode::LIVE && _gps.connected()) {
-        static uint32_t lastLiveIndex = 0;
-        if (_telemetry.sampleIndex != lastLiveIndex) {
-            lastLiveIndex = _telemetry.sampleIndex;
-            newSample = true;
-        }
-    } else if (_mode == DataMode::DEMO) {
-        newSample = _simulator.update(_telemetry);
-        if (_simulator.finished() && _logger.recording()) _logger.forceStop();
-    }
-
-    _sensors.update();
-    if (newSample) _logger.processSample(_telemetry, _mode);
-    updateLoggingLed();
-    _api.update();
-    delay(1);
+    _gps.update(_telemetry); updateDataMode(); bool newSample = false;
+    if (_mode == DataMode::LIVE && _gps.connected()) { static uint32_t lastLiveIndex = 0; if (_telemetry.sampleIndex != lastLiveIndex) { lastLiveIndex = _telemetry.sampleIndex; newSample = true; } }
+    else if (_mode == DataMode::DEMO) { newSample = _simulator.update(_telemetry); if (_simulator.finished() && _logger.recording()) _logger.forceStop(); }
+    _sensors.update(); if (newSample) _logger.processSample(_telemetry, _mode); updateLoggingLed(); _api.update(); delay(1);
 }
