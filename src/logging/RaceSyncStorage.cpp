@@ -36,10 +36,7 @@ String RaceSyncStorage::cardTypeName() const
     }
 }
 
-uint64_t RaceSyncStorage::cardSizeBytes() const
-{
-    return usingSd() ? SD.cardSize() : 0;
-}
+uint64_t RaceSyncStorage::cardSizeBytes() const { return usingSd() ? SD.cardSize() : 0; }
 
 String RaceSyncStorage::basename(const String& path) const
 {
@@ -49,9 +46,7 @@ String RaceSyncStorage::basename(const String& path) const
 
 bool RaceSyncStorage::isVBox(const String& filename) const
 {
-    String lower = filename;
-    lower.toLowerCase();
-    return lower.endsWith(".vbo");
+    String lower = filename; lower.toLowerCase(); return lower.endsWith(".vbo");
 }
 
 bool RaceSyncStorage::isSafeVBoxFilename(const String& filename) const
@@ -67,14 +62,12 @@ String RaceSyncStorage::pathFor(const String& filename) const
 
 bool RaceSyncStorage::exists(const String& filename) const
 {
-    return _ready && _fs != nullptr && isSafeVBoxFilename(filename) &&
-           _fs->exists(pathFor(filename));
+    return _ready && _fs != nullptr && isSafeVBoxFilename(filename) && _fs->exists(pathFor(filename));
 }
 
 File RaceSyncStorage::openRead(const String& filename)
 {
-    if (!exists(filename)) return File();
-    return _fs->open(pathFor(filename), FILE_READ);
+    if (!exists(filename)) return File(); return _fs->open(pathFor(filename), FILE_READ);
 }
 
 File RaceSyncStorage::openWrite(const String& filename)
@@ -83,141 +76,93 @@ File RaceSyncStorage::openWrite(const String& filename)
     return _fs->open(pathFor(filename), FILE_WRITE);
 }
 
+File RaceSyncStorage::openFileWrite(const String& filename)
+{
+    if (!_ready || _fs == nullptr || filename.length() == 0 || filename.indexOf("..") >= 0 ||
+        filename.indexOf('/') >= 0 || filename.indexOf('\\') >= 0) return File();
+    return _fs->open(pathFor(filename), FILE_WRITE);
+}
+
 uint32_t RaceSyncStorage::sessionCount()
 {
     if (!_ready || _fs == nullptr) return 0;
-    File root = _fs->open(_root);
-    if (!root || !root.isDirectory()) return 0;
-    uint32_t count = 0;
-    File file = root.openNextFile();
-    while (file) {
-        if (!file.isDirectory() && isVBox(basename(file.name()))) count++;
-        file.close();
-        file = root.openNextFile();
-    }
-    root.close();
-    return count;
+    File root = _fs->open(_root); if (!root || !root.isDirectory()) return 0;
+    uint32_t count = 0; File file = root.openNextFile();
+    while (file) { if (!file.isDirectory() && isVBox(basename(file.name()))) count++; file.close(); file = root.openNextFile(); }
+    root.close(); return count;
 }
 
 uint32_t RaceSyncStorage::sessionIdForFilename(const String& filename) const
 {
-    String normalized = filename;
-    normalized.toLowerCase();
-    uint32_t hash = 2166136261UL;
-    for (size_t i = 0; i < normalized.length(); i++) {
-        hash ^= (uint8_t)normalized[i];
-        hash *= 16777619UL;
-    }
+    String normalized = filename; normalized.toLowerCase(); uint32_t hash = 2166136261UL;
+    for (size_t i = 0; i < normalized.length(); i++) { hash ^= (uint8_t)normalized[i]; hash *= 16777619UL; }
     return hash == 0 ? 1 : hash;
 }
 
 bool RaceSyncStorage::findSessionById(uint32_t sessionId, String& filename)
 {
-    filename = "";
-    if (!_ready || _fs == nullptr || sessionId == 0) return false;
-    File root = _fs->open(_root);
-    if (!root || !root.isDirectory()) return false;
-    bool found = false;
-    File file = root.openNextFile();
+    filename = ""; if (!_ready || _fs == nullptr || sessionId == 0) return false;
+    File root = _fs->open(_root); if (!root || !root.isDirectory()) return false;
+    bool found = false; File file = root.openNextFile();
     while (file) {
-        if (!file.isDirectory()) {
-            String current = basename(file.name());
+        if (!file.isDirectory()) { String current = basename(file.name());
             if (isVBox(current) && sessionIdForFilename(current) == sessionId) {
-                if (found) {
-                    Serial.println("[STORE] Session ID collision");
-                    file.close(); root.close(); filename = ""; return false;
-                }
-                filename = current;
-                found = true;
+                if (found) { Serial.println("[STORE] Session ID collision"); file.close(); root.close(); filename = ""; return false; }
+                filename = current; found = true;
             }
         }
-        file.close();
-        file = root.openNextFile();
+        file.close(); file = root.openNextFile();
     }
-    root.close();
-    return found;
+    root.close(); return found;
 }
 
 bool RaceSyncStorage::deleteSessionById(uint32_t sessionId, String& deletedFilename)
 {
-    deletedFilename = "";
-    String filename;
+    deletedFilename = ""; String filename;
     if (!findSessionById(sessionId, filename) || !isSafeVBoxFilename(filename)) return false;
     if (!_fs->remove(pathFor(filename))) return false;
-    deletedFilename = filename;
-    Serial.printf("[STORE] Deleted session %u: %s\n", sessionId, filename.c_str());
-    return true;
+    deletedFilename = filename; Serial.printf("[STORE] Deleted session %u: %s\n", sessionId, filename.c_str()); return true;
 }
 
 String RaceSyncStorage::findDemoSource()
 {
     if (!_ready || _fs == nullptr) return "";
-    File root = _fs->open(_root);
-    if (!root || !root.isDirectory()) return "";
+    File root = _fs->open(_root); if (!root || !root.isDirectory()) return "";
     File file = root.openNextFile();
     while (file) {
-        if (!file.isDirectory()) {
-            String filename = basename(file.name());
-            if (isVBox(filename) && !filename.startsWith("RS_")) {
-                file.close(); root.close(); return filename;
-            }
+        if (!file.isDirectory()) { String filename = basename(file.name());
+            if (isVBox(filename) && !filename.startsWith("RS_")) { file.close(); root.close(); return filename; }
         }
-        file.close();
-        file = root.openNextFile();
+        file.close(); file = root.openNextFile();
     }
-    root.close();
-    return "";
+    root.close(); return "";
 }
 
-void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& activeFilename,
-                                        const String& protectedFilename)
+void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& activeFilename, const String& protectedFilename)
 {
     if (!_ready || _fs == nullptr) return;
-    File root = _fs->open(_root);
-    if (!root || !root.isDirectory()) return;
+    File root = _fs->open(_root); if (!root || !root.isDirectory()) return;
     File file = root.openNextFile();
     while (file) {
-        if (!file.isDirectory()) {
-            String filename = basename(file.name());
+        if (!file.isDirectory()) { String filename = basename(file.name());
             if (isVBox(filename)) {
                 uint32_t id = sessionIdForFilename(filename);
                 bool active = activeFilename.length() && filename == activeFilename;
                 bool protectedFile = protectedFilename.length() && filename == protectedFilename;
                 bool deletable = !active && !protectedFile;
                 JsonObject session = sessions.add<JsonObject>();
-                session["id"] = id;
-                session["file"] = filename;
-                session["sizeBytes"] = file.size();
-                session["complete"] = !active;
-                session["active"] = active;
-                session["protected"] = protectedFile;
-                session["deletable"] = deletable;
-                session["generatedByRaceSync"] = filename.startsWith("RS_");
+                session["id"] = id; session["file"] = filename; session["sizeBytes"] = file.size();
+                session["complete"] = !active; session["active"] = active; session["protected"] = protectedFile;
+                session["deletable"] = deletable; session["generatedByRaceSync"] = filename.startsWith("RS_");
                 session["downloadUrl"] = "/api/sessions/" + String(id);
                 if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
             }
         }
-        file.close();
-        file = root.openNextFile();
+        file.close(); file = root.openNextFile();
     }
     root.close();
 }
 
-uint64_t RaceSyncStorage::totalBytes() const
-{
-    if (!_ready) return 0;
-    return _usingSd ? SD.totalBytes() : LittleFS.totalBytes();
-}
-
-uint64_t RaceSyncStorage::usedBytes() const
-{
-    if (!_ready) return 0;
-    return _usingSd ? SD.usedBytes() : LittleFS.usedBytes();
-}
-
-uint64_t RaceSyncStorage::freeBytes() const
-{
-    uint64_t total = totalBytes();
-    uint64_t used = usedBytes();
-    return total >= used ? total - used : 0;
-}
+uint64_t RaceSyncStorage::totalBytes() const { if (!_ready) return 0; return _usingSd ? SD.totalBytes() : LittleFS.totalBytes(); }
+uint64_t RaceSyncStorage::usedBytes() const { if (!_ready) return 0; return _usingSd ? SD.usedBytes() : LittleFS.usedBytes(); }
+uint64_t RaceSyncStorage::freeBytes() const { uint64_t total = totalBytes(), used = usedBytes(); return total >= used ? total - used : 0; }
