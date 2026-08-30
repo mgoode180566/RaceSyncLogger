@@ -6,11 +6,7 @@
 
 bool RaceSyncStorage::begin()
 {
-    if (beginSd())
-        return true;
-
-    Serial.println("[STORE] SD unavailable - falling back to LittleFS");
-    return beginNvm();
+    return beginSd();
 }
 
 bool RaceSyncStorage::beginSd()
@@ -36,21 +32,24 @@ bool RaceSyncStorage::beginSd()
         RaceSyncConfig::SD_SPI_FREQUENCY
     ))
     {
-        Serial.println("[STORE] SD mount failed");
+        Serial.println("[STORE] SD mount failed - session logging unavailable");
+        _fs = nullptr;
+        _ready = false;
         return false;
     }
 
     if (SD.cardType() == CARD_NONE)
     {
-        Serial.println("[STORE] No SD card detected");
+        Serial.println("[STORE] No SD card detected - session logging unavailable");
         SD.end();
+        _fs = nullptr;
+        _ready = false;
         return false;
     }
 
     _fs = &SD;
     _root = "/";
     _ready = true;
-    _usingSd = true;
 
     Serial.printf(
         "[STORE] SD ready: card=%llu MB total=%llu MB used=%llu MB\n",
