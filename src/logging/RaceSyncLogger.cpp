@@ -14,7 +14,7 @@ String RaceSyncLogger::createFilename(const Telemetry& t, DataMode mode) const
 {
     char b[64];
     if (t.timeValid && t.year >= 2024)
-        snprintf(b, sizeof(b), "RS_%04u%02u%02u_%02u%02u%02u.vbo", t.year,t.month,t.day,t.hour,t.minute,t.second);
+        snprintf(b, sizeof(b), "RS_%04u-%02u-%02u_%02u-%02u-%02u.vbo", t.year,t.month,t.day,t.hour,t.minute,t.second);
     else
         snprintf(b, sizeof(b), "RS_LIVE_%010lu.vbo", (unsigned long)millis());
     return String(b);
