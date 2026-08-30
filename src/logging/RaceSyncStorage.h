@@ -30,9 +30,7 @@ public:
     uint32_t sessionIdForFilename(const String& filename) const;
     bool findSessionById(uint32_t sessionId, String& filename);
     bool deleteSessionById(uint32_t sessionId, String& deletedFilename);
-    String findDemoSource();
-    void addSessionsToJson(JsonArray sessions, const String& activeFilename = "",
-                           const String& protectedFilename = "");
+    void addSessionsToJson(JsonArray sessions, const String& activeFilename = "");
 
     uint64_t totalBytes() const;
     uint64_t usedBytes() const;
