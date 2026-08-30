@@ -3,6 +3,7 @@
 
 bool RaceSyncLogger::begin(RaceSyncStorage& storage) { _storage = &storage; return storage.ready(); }
 bool RaceSyncLogger::recording() const { return _recording; }
+bool RaceSyncLogger::manualSession() const { return _recording && _manualSession; }
 const String& RaceSyncLogger::currentFilename() const { return _filename; }
 uint32_t RaceSyncLogger::sampleCount() const { return _sampleCount; }
 uint32_t RaceSyncLogger::storageWriteErrors() const { return _writeErrors; }
@@ -15,7 +16,7 @@ String RaceSyncLogger::createFilename(const Telemetry& t, DataMode mode) const
     if (t.timeValid && t.year >= 2024)
         snprintf(b, sizeof(b), "RS_%04u%02u%02u_%02u%02u%02u.vbo", t.year,t.month,t.day,t.hour,t.minute,t.second);
     else
-        snprintf(b, sizeof(b), "RS_%s_%010lu.vbo", mode == DataMode::DEMO ? "DEMO" : "LIVE", (unsigned long)millis());
+        snprintf(b, sizeof(b), "RS_LIVE_%010lu.vbo", (unsigned long)millis());
     return String(b);
 }
 
@@ -69,9 +70,16 @@ bool RaceSyncLogger::storageHasSafeFreeSpace()
     return true;
 }
 
-bool RaceSyncLogger::start(const Telemetry& t, DataMode mode)
+bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
 {
-    if (_recording) return true;
+    if (_recording) {
+        if (manual) {
+            _manualSession = true;
+            _autoStartInhibit = false;
+            Serial.println("[LOGGER] Existing recording switched to manual control");
+        }
+        return true;
+    }
     if (!_storage || !_storage->ready()) { Serial.println("[LOGGER] Storage not ready"); return false; }
     if (_storage->freeBytes() < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) { Serial.println("[LOGGER] Insufficient free storage - recording not started"); return false; }
 
@@ -83,8 +91,8 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode)
     if (!_kmlFile) { _writeErrors++; _file.close(); Serial.println("[LOGGER] Unable to create companion KML"); return false; }
 
     writeHeader(_file,mode); writeKmlHeader(_kmlFile,_kmlFilename); _file.flush(); _kmlFile.flush();
-    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true;
-    Serial.printf("[LOGGER] Started: %s\n",_filename.c_str());
+    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false;
+    Serial.printf("[LOGGER] Started: %s (%s)\n",_filename.c_str(), manual ? "MANUAL" : "AUTO");
     Serial.printf("[LOGGER] KML: %s\n",_kmlFilename.c_str());
     return true;
 }
@@ -94,16 +102,34 @@ void RaceSyncLogger::stop()
     if (!_recording) return;
     if (_file) { _file.flush(); _file.close(); }
     if (_kmlFile) { writeKmlFooter(_kmlFile); _kmlFile.flush(); _kmlFile.close(); }
-    _recording=false; _belowSpeedSince=0;
+    _recording=false; _manualSession=false; _belowSpeedSince=0;
     Serial.printf("[LOGGER] Closed: %s samples=%u\n",_filename.c_str(),_sampleCount);
     Serial.printf("[LOGGER] Closed KML: %s\n",_kmlFilename.c_str());
+}
+
+bool RaceSyncLogger::manualStart(const Telemetry& telemetry, DataMode mode)
+{
+    if (!telemetry.valid) {
+        Serial.println("[LOGGER] Manual start rejected - GPS fix not valid");
+        return false;
+    }
+    return start(telemetry, mode, true);
+}
+
+bool RaceSyncLogger::manualStop()
+{
+    if (!_recording) return false;
+    _autoStartInhibit = true;
+    stop();
+    _autoStartInhibit = true;
+    Serial.println("[LOGGER] Manual stop - automatic restart inhibited until speed drops below start threshold");
+    return true;
 }
 
 void RaceSyncLogger::forceStop() { stop(); }
 
 void RaceSyncLogger::writeKmlSample(const Telemetry& t)
 {
-    // Telemetry latitude/longitude are already decimal degrees; KML requires longitude,latitude,altitude.
     _kmlFile.print(t.longitude, 7); _kmlFile.print(',');
     _kmlFile.print(t.latitude, 7); _kmlFile.print(',');
     _kmlFile.println(t.height, 2);
@@ -124,7 +150,22 @@ void RaceSyncLogger::writeSample(const Telemetry& t)
 void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
 {
     if (!t.valid) return;
-    if (!_recording && t.velocityKmh >= RaceSyncConfig::LOG_START_SPEED_KMH) start(t,mode);
+
+    if (_recording && _manualSession) {
+        writeSample(t);
+        return;
+    }
+
+    if (_autoStartInhibit) {
+        if (t.velocityKmh < RaceSyncConfig::LOG_START_SPEED_KMH) {
+            _autoStartInhibit = false;
+            Serial.println("[LOGGER] Automatic start re-enabled");
+        } else {
+            return;
+        }
+    }
+
+    if (!_recording && t.velocityKmh >= RaceSyncConfig::LOG_START_SPEED_KMH) start(t,mode,false);
     if (!_recording) return;
     writeSample(t); if (!_recording) return;
     if (t.velocityKmh <= RaceSyncConfig::LOG_STOP_SPEED_KMH) {
