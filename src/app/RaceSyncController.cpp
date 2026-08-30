@@ -3,7 +3,7 @@
 #include "../config/RaceSyncConfig.h"
 
 RaceSyncController::RaceSyncController()
-    : _api(_storage, _logger, _gps, _wifi, _simulator, _telemetry, _mode, _bootCount)
+    : _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
 {
 }
 
@@ -43,8 +43,13 @@ void RaceSyncController::begin()
     pinMode(LED_BUILTIN, OUTPUT);
 #endif
     setLoggingLed(false);
-    incrementBootCount(); _wifi.begin(); _storage.begin(); _logger.begin(_storage); _simulator.begin(_storage); _gps.begin(); _sensors.begin();
-    // Register auxiliary routes before WebServer::begin().
+    incrementBootCount();
+    _wifi.begin();
+    _storage.begin();
+    _logger.begin(_storage);
+    _gps.begin();
+    _sensors.begin();
+
     _api.beginWebUiRoute();
     _api.beginKmlDownloadRoute();
     _api.begin();
@@ -53,16 +58,25 @@ void RaceSyncController::begin()
 
 void RaceSyncController::updateDataMode()
 {
-    bool gpsPresent = _gps.connected();
-    if (gpsPresent) { if (!_logger.recording() || _mode == DataMode::LIVE) _mode = DataMode::LIVE; return; }
-    if (_mode == DataMode::STARTING && millis() >= RaceSyncConfig::GPS_BOOT_GRACE_MS) { if (_simulator.available()) { _mode = DataMode::DEMO; Serial.println("[MODE] GPS absent -> DEMO"); } }
-    if (_mode == DataMode::LIVE && !_logger.recording() && _simulator.available()) { _mode = DataMode::DEMO; Serial.println("[MODE] GPS lost -> DEMO"); }
+    _mode = _gps.connected() ? DataMode::LIVE : DataMode::STARTING;
 }
 
 void RaceSyncController::update()
 {
-    _gps.update(_telemetry); updateDataMode(); bool newSample = false;
-    if (_mode == DataMode::LIVE && _gps.connected()) { static uint32_t lastLiveIndex = 0; if (_telemetry.sampleIndex != lastLiveIndex) { lastLiveIndex = _telemetry.sampleIndex; newSample = true; } }
-    else if (_mode == DataMode::DEMO) { newSample = _simulator.update(_telemetry); if (_simulator.finished() && _logger.recording()) _logger.forceStop(); }
-    _sensors.update(); if (newSample) _logger.processSample(_telemetry, _mode); updateLoggingLed(); _api.update(); delay(1);
+    _gps.update(_telemetry);
+    updateDataMode();
+
+    static uint32_t lastLiveIndex = 0;
+    bool newSample = false;
+    if (_mode == DataMode::LIVE && _telemetry.sampleIndex != lastLiveIndex)
+    {
+        lastLiveIndex = _telemetry.sampleIndex;
+        newSample = true;
+    }
+
+    _sensors.update();
+    if (newSample) _logger.processSample(_telemetry, _mode);
+    updateLoggingLed();
+    _api.update();
+    delay(1);
 }
