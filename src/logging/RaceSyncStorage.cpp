@@ -62,20 +62,14 @@ bool RaceSyncStorage::deleteSessionById(uint32_t sessionId, String& deletedFilen
     deletedFilename = filename; Serial.printf("[STORE] Deleted session %u: %s (and companion KML if present)\n", sessionId, filename.c_str()); return true;
 }
 
-String RaceSyncStorage::findDemoSource()
-{
-    if (!_ready || _fs == nullptr) return ""; File root = _fs->open(_root); if (!root || !root.isDirectory()) return ""; File file = root.openNextFile();
-    while (file) { if (!file.isDirectory()) { String filename = basename(file.name()); if (isVBox(filename) && !filename.startsWith("RS_")) { file.close(); root.close(); return filename; } } file.close(); file = root.openNextFile(); } root.close(); return "";
-}
-
-void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& activeFilename, const String& protectedFilename)
+void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& activeFilename)
 {
     if (!_ready || _fs == nullptr) return; File root = _fs->open(_root); if (!root || !root.isDirectory()) return; File file = root.openNextFile();
     while (file) {
         if (!file.isDirectory()) { String filename = basename(file.name()); if (isVBox(filename)) {
-            uint32_t id = sessionIdForFilename(filename); bool active = activeFilename.length() && filename == activeFilename; bool protectedFile = protectedFilename.length() && filename == protectedFilename; bool deletable = !active && !protectedFile;
+            uint32_t id = sessionIdForFilename(filename); bool active = activeFilename.length() && filename == activeFilename; bool deletable = !active;
             String kmlFilename = filename.substring(0, filename.length() - 4) + ".kml"; bool hasKml = fileExists(kmlFilename);
-            JsonObject session = sessions.add<JsonObject>(); session["id"] = id; session["file"] = filename; session["sizeBytes"] = file.size(); session["complete"] = !active; session["active"] = active; session["protected"] = protectedFile; session["deletable"] = deletable; session["generatedByRaceSync"] = filename.startsWith("RS_"); session["downloadUrl"] = "/api/sessions/" + String(id); session["hasKml"] = hasKml;
+            JsonObject session = sessions.add<JsonObject>(); session["id"] = id; session["file"] = filename; session["sizeBytes"] = file.size(); session["complete"] = !active; session["active"] = active; session["deletable"] = deletable; session["generatedByRaceSync"] = filename.startsWith("RS_"); session["downloadUrl"] = "/api/sessions/" + String(id); session["hasKml"] = hasKml;
             if (hasKml) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id); if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
         }} file.close(); file = root.openNextFile();
     } root.close();
