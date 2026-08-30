@@ -7,7 +7,6 @@
 #include "../logging/RaceSyncLogger.h"
 #include "../gps/RaceSyncGps.h"
 #include "../wifi/RaceSyncWifi.h"
-#include "../sim/RaceSyncSimulator.h"
 #include "../sensors/RaceSyncSensors.h"
 #include "../api/RaceSyncApi.h"
 
@@ -27,7 +26,6 @@ private:
     RaceSyncLogger _logger;
     RaceSyncGps _gps;
     RaceSyncWifi _wifi;
-    RaceSyncSimulator _simulator;
     RaceSyncSensors _sensors;
 
     Preferences _preferences;
