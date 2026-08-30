@@ -4,9 +4,9 @@ namespace {
 const char RACESYNC_UI[] PROGMEM = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>RaceSync</title><style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}*{box-sizing:border-box}body{margin:0}.wrap{max-width:900px;margin:auto;padding:18px}.head,.bar,.session{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:16px;margin-bottom:12px}.head{display:flex;justify-content:space-between;align-items:center}.brand{font-size:26px;font-weight:800}.sub{color:#9ba8b4;font-size:13px}.status{font-size:13px;text-align:right}.ok{color:#75d69c}.warn{color:#ffca6b}.bar{display:flex;gap:10px;justify-content:space-between;align-items:center}.btn{border:0;border-radius:8px;padding:10px 13px;font-weight:700;cursor:pointer;background:#e9eef2;color:#111}.primary{background:#54bdf5}.danger{background:#e76b6b}.ghost{background:#303a43;color:#fff}.session{display:grid;grid-template-columns:1fr auto;gap:12px}.title{font-weight:750}.meta{font-size:13px;color:#9ba8b4;margin-top:5px}.new{display:inline-block;background:#54bdf5;color:#071018;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:800;margin-right:7px}.done{color:#75d69c;font-size:12px;margin-right:7px}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.empty{text-align:center;color:#9ba8b4;padding:35px}.foot{color:#87939e;font-size:12px;text-align:center;padding:12px}@media(max-width:650px){.session{grid-template-columns:1fr}.actions .btn{flex:1}.bar{align-items:stretch;flex-direction:column}.head{align-items:flex-start}.status{text-align:left;margin-top:10px}}
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}*{box-sizing:border-box}body{margin:0}.wrap{max-width:900px;margin:auto;padding:18px}.head,.bar,.session{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:16px;margin-bottom:12px}.head{display:flex;justify-content:space-between;align-items:center}.brand{font-size:26px;font-weight:800}.sub{color:#9ba8b4;font-size:13px}.status{font-size:13px;text-align:right}.ok{color:#75d69c}.warn{color:#ffca6b}.bar{display:flex;gap:10px;justify-content:space-between;align-items:center}.btn{border:0;border-radius:8px;padding:10px 13px;font-weight:700;cursor:pointer;background:#e9eef2;color:#111}.primary{background:#54bdf5}.danger{background:#e76b6b}.ghost{background:#303a43;color:#fff}.session{display:grid;grid-template-columns:1fr auto;gap:12px}.title{font-weight:750}.meta{font-size:13px;color:#9ba8b4;margin-top:5px}.new{display:inline-block;background:#54bdf5;color:#071018;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:800;margin-right:7px}.done{color:#75d69c;font-size:12px;margin-right:7px}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.empty{text-align:center;color:#9ba8b4;padding:35px}.foot{color:#87939e;font-size:12px;text-align:center;padding:12px}.nav{margin-top:10px}.nav a{color:#54bdf5;text-decoration:none;font-size:13px}@media(max-width:650px){.session{grid-template-columns:1fr}.actions .btn{flex:1}.bar{align-items:stretch;flex-direction:column}.head{align-items:flex-start}.status{text-align:left;margin-top:10px}}
 </style></head><body><main class="wrap">
-<div class="head"><div><div class="brand">RaceSync</div><div class="sub">Motorcycle Data Logger</div></div><div class="status"><div id="gps">GPS ...</div><div id="sd">Storage ...</div><div id="log">Logger ...</div></div></div>
+<div class="head"><div><div class="brand">RaceSync</div><div class="sub">Motorcycle Data Logger</div><div class="nav"><a href="/status">Full Device Status</a></div></div><div class="status"><div id="gps">GPS ...</div><div id="sd">Storage ...</div><div id="log">Logger ...</div></div></div>
 <div class="bar"><div><strong>Stored Sessions</strong><div class="sub" id="summary">Loading...</div></div><button class="btn primary" id="all" onclick="downloadAllNew()">Download All New</button></div>
 <div id="sessions"></div><div class="foot" id="footer">RaceSync</div></main>
 <script>
@@ -23,6 +23,18 @@ function downloadAllNew(){const seen=downloaded();const fresh=sessions.filter(s=
 async function load(){try{const [sr,st]=await Promise.all([fetch('/api/sessions',{cache:'no-store'}),fetch('/api/status',{cache:'no-store'})]);const sj=await sr.json(),x=await st.json();sessions=sj.sessions||[];document.getElementById('gps').innerHTML='<span class="'+(x.gps&&x.gps.validFix?'ok':'warn')+'">●</span> GPS '+(x.gps&&x.gps.validFix?'READY':'WAITING');document.getElementById('sd').innerHTML='<span class="'+(x.storage&&x.storage.ready?'ok':'warn')+'">●</span> '+(x.storage&&x.storage.ready?'STORAGE READY':'STORAGE ERROR');document.getElementById('log').textContent=x.logger&&x.logger.recording?'● RECORDING':'Logger idle';document.getElementById('footer').textContent=fmt(x.storage.freeBytes)+' free · '+(x.system.firmware||'RaceSync');render()}catch(e){document.getElementById('summary').textContent='Unable to contact RaceSync'}}
 load();setInterval(load,5000);
 </script></body></html>)HTML";
+
+const char RACESYNC_STATUS_UI[] PROGMEM = R"HTML(<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RaceSync Device Status</title><style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1050px;margin:auto;padding:18px}.head,.panel{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:16px;margin-bottom:12px}.head{display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-size:25px;font-weight:800}.sub{color:#9ba8b4;font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{display:inline-block;border:0;border-radius:8px;padding:9px 12px;font-weight:700;background:#303a43;color:#fff;text-decoration:none;cursor:pointer}.primary{background:#54bdf5;color:#071018}.stamp{font-size:12px;color:#87939e;margin-bottom:10px}pre{margin:0;white-space:pre-wrap;word-break:break-word;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#dbe7ef}.error{color:#ff8c8c}@media(max-width:650px){.head{align-items:flex-start;flex-direction:column}}
+</style></head><body><main class="wrap">
+<div class="head"><div><div class="brand">RaceSync Device Status</div><div class="sub">Complete contents of <code>/api/status</code></div></div><div class="actions"><a class="btn" href="/">Sessions</a><button class="btn primary" onclick="loadStatus()">Refresh</button></div></div>
+<div class="panel"><div class="stamp" id="stamp">Loading status...</div><pre id="status">Loading...</pre></div>
+</main><script>
+async function loadStatus(){const box=document.getElementById('status'),stamp=document.getElementById('stamp');try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const x=await r.json();box.className='';box.textContent=JSON.stringify(x,null,2);stamp.textContent='Last updated: '+new Date().toLocaleTimeString()}catch(e){box.className='error';box.textContent='Unable to read device status: '+e.message;stamp.textContent='Status unavailable'}}
+loadStatus();setInterval(loadStatus,5000);
+</script></body></html>)HTML";
 }
 
 void RaceSyncApi::beginWebUiRoute()
@@ -30,5 +42,10 @@ void RaceSyncApi::beginWebUiRoute()
     _server.on("/", HTTP_GET, [this]() {
         _server.sendHeader("Cache-Control", "no-store");
         _server.send_P(200, "text/html", RACESYNC_UI);
+    });
+
+    _server.on("/status", HTTP_GET, [this]() {
+        _server.sendHeader("Cache-Control", "no-store");
+        _server.send_P(200, "text/html", RACESYNC_STATUS_UI);
     });
 }
