@@ -4,18 +4,12 @@
 enum class DataMode
 {
     STARTING,
-    LIVE,
-    DEMO
+    LIVE
 };
 
 inline const char* dataModeName(DataMode mode)
 {
-    switch (mode)
-    {
-        case DataMode::LIVE: return "LIVE";
-        case DataMode::DEMO: return "DEMO";
-        default: return "STARTING";
-    }
+    return mode == DataMode::LIVE ? "LIVE" : "STARTING";
 }
 
 struct Telemetry
@@ -50,7 +44,6 @@ struct Telemetry
     int aviFileIndex = 0;
     double aviTime = 0.0;
 
-    // Existing demo/VBOX channels.
     double comboAcc = 0.0;
     double oilPressure = 0.0;
     double oilTemperature = 0.0;
