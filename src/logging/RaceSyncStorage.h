@@ -9,7 +9,6 @@ class RaceSyncStorage
 public:
     bool begin();
     bool beginSd();
-    bool beginNvm();
     bool ready() const;
 
     String storageType() const;
@@ -40,7 +39,6 @@ private:
     fs::FS* _fs = nullptr;
     String _root = "/";
     bool _ready = false;
-    bool _usingSd = false;
 
     String basename(const String& path) const;
     String pathFor(const String& filename) const;
