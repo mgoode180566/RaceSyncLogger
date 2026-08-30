@@ -1,20 +1,11 @@
 #include "RaceSyncStorage.h"
 
-#include <LittleFS.h>
 #include <SD.h>
 
-bool RaceSyncStorage::beginNvm()
-{
-    Serial.println("[STORE] Mounting LittleFS");
-    if (!LittleFS.begin(true)) { Serial.println("[STORE] LittleFS mount failed"); _ready = false; return false; }
-    _fs = &LittleFS; _root = "/"; _ready = true; _usingSd = false;
-    Serial.printf("[STORE] %u VBO file(s)\n", sessionCount()); return true;
-}
-
 bool RaceSyncStorage::ready() const { return _ready; }
-String RaceSyncStorage::storageType() const { return _usingSd ? "SD" : "NVM"; }
-String RaceSyncStorage::filesystemName() const { return _usingSd ? "FAT" : "LittleFS"; }
-bool RaceSyncStorage::usingSd() const { return _ready && _usingSd; }
+String RaceSyncStorage::storageType() const { return "SD"; }
+String RaceSyncStorage::filesystemName() const { return "FAT"; }
+bool RaceSyncStorage::usingSd() const { return _ready; }
 
 String RaceSyncStorage::cardTypeName() const
 {
@@ -75,6 +66,6 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
     } root.close();
 }
 
-uint64_t RaceSyncStorage::totalBytes() const { if (!_ready) return 0; return _usingSd ? SD.totalBytes() : LittleFS.totalBytes(); }
-uint64_t RaceSyncStorage::usedBytes() const { if (!_ready) return 0; return _usingSd ? SD.usedBytes() : LittleFS.usedBytes(); }
+uint64_t RaceSyncStorage::totalBytes() const { return _ready ? SD.totalBytes() : 0; }
+uint64_t RaceSyncStorage::usedBytes() const { return _ready ? SD.usedBytes() : 0; }
 uint64_t RaceSyncStorage::freeBytes() const { uint64_t total = totalBytes(), used = usedBytes(); return total >= used ? total - used : 0; }
