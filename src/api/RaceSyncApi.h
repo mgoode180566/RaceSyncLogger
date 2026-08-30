@@ -25,6 +25,7 @@ public:
     void begin();
     void beginKmlDownloadRoute();
     void beginWebUiRoute();
+    void beginManualLoggingRoutes();
     void update();
 
 private:
