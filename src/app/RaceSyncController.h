@@ -19,6 +19,15 @@ public:
     void update();
 
 private:
+    enum DiagnosticCode : uint8_t
+    {
+        DIAG_WIFI    = 1,
+        DIAG_STORAGE = 2,
+        DIAG_LOGGER  = 3,
+        DIAG_GPS     = 4,
+        DIAG_SENSORS = 5
+    };
+
     Telemetry _telemetry;
     DataMode _mode = DataMode::STARTING;
 
@@ -38,6 +47,14 @@ private:
 
     void updateDataMode();
     void incrementBootCount();
+
+    void setStatusLed(uint8_t red, uint8_t green, uint8_t blue);
     void updateLoggingLed();
     void setLoggingLed(bool on);
+
+    uint8_t runStartupDiagnostics();
+    bool waitForGpsTraffic(uint32_t timeoutMs);
+    void showDiagnosticFailures(uint8_t failureMask);
+    void flashFailureCode(uint8_t code);
+    void showDiagnosticSuccess();
 };
