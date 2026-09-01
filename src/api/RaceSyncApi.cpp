@@ -137,6 +137,9 @@ void RaceSyncApi::handleStatus()
     storage["type"] = _storage.storageType();
     storage["filesystem"] = _storage.filesystemName();
     storage["ready"] = _storage.ready();
+    storage["readable"] = _storage.readable();
+    storage["writable"] = _storage.writable();
+    storage["lastError"] = _storage.lastError();
     storage["totalBytes"] = totalStorage;
     storage["usedBytes"] = usedStorage;
     storage["freeBytes"] = freeStorage;
@@ -168,14 +171,14 @@ void RaceSyncApi::handleStatus()
     else if (!_telemetry.valid) health["gps"] = "NO_FIX";
     else health["gps"] = "OK";
 
-    if (!_storage.ready()) health["storage"] = "ERROR";
+    if (!_storage.ready() || !_storage.readable() || !_storage.writable()) health["storage"] = "ERROR";
     else if (usedPercent >= RaceSyncConfig::STORAGE_FULL_PERCENT) health["storage"] = "FULL";
     else if (usedPercent >= RaceSyncConfig::STORAGE_WARNING_PERCENT) health["storage"] = "WARNING";
     else health["storage"] = "OK";
 
     health["logger"] = _logger.recording() ? "RECORDING" : "IDLE";
     health["wifi"] = "OK";
-    bool systemHealthy = _storage.ready() && usedPercent < RaceSyncConfig::STORAGE_WARNING_PERCENT && ESP.getFreeHeap() > RaceSyncConfig::MIN_HEALTHY_HEAP_BYTES;
+    bool systemHealthy = _storage.ready() && _storage.readable() && _storage.writable() && usedPercent < RaceSyncConfig::STORAGE_WARNING_PERCENT && ESP.getFreeHeap() > RaceSyncConfig::MIN_HEALTHY_HEAP_BYTES;
     health["overall"] = systemHealthy ? "OK" : "WARNING";
 
     String response; serializeJson(doc, response); sendJson(200, response);
@@ -276,11 +279,15 @@ void RaceSyncApi::handleLegacySessionDownload(const String& filename)
 void RaceSyncApi::handleSessionDeleteById(uint32_t sessionId)
 {
     String filename;
-    if (!_storage.findSessionById(sessionId, filename)) { sendJson(404, "{\"error\":\"Session not found\"}"); return; }
+    if (!_storage.findSessionById(sessionId, filename)) {
+        JsonDocument doc; doc["error"] = "Session not found"; if (_storage.lastError().length()) doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(404, response); return;
+    }
     if (_logger.recording() && filename == _logger.currentFilename()) { sendJson(409, "{\"error\":\"Cannot delete the active recording\"}"); return; }
 
     String deletedFilename;
-    if (!_storage.deleteSessionById(sessionId, deletedFilename)) { sendJson(500, "{\"error\":\"Unable to delete session\"}"); return; }
+    if (!_storage.deleteSessionById(sessionId, deletedFilename)) {
+        JsonDocument doc; doc["error"] = "Unable to delete session"; doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(500, response); return;
+    }
 
     JsonDocument doc;
     doc["deleted"] = true;
