@@ -1,7 +1,7 @@
 #include "RaceSyncLogger.h"
 #include "../config/RaceSyncConfig.h"
 
-bool RaceSyncLogger::begin(RaceSyncStorage& storage) { _storage = &storage; return storage.ready(); }
+bool RaceSyncLogger::begin(RaceSyncStorage& storage) { _storage = &storage; return storage.ready() && storage.writable(); }
 bool RaceSyncLogger::recording() const { return _recording; }
 bool RaceSyncLogger::manualSession() const { return _recording && _manualSession; }
 const String& RaceSyncLogger::currentFilename() const { return _filename; }
@@ -61,7 +61,7 @@ String RaceSyncLogger::createVBoxLine(const Telemetry& t) const
 
 bool RaceSyncLogger::storageHasSafeFreeSpace()
 {
-    if (!_storage || !_storage->ready()) return false;
+    if (!_storage || !_storage->ready() || !_storage->writable()) return false;
     uint32_t now=millis(); if (_lastStorageCheckMs && now-_lastStorageCheckMs<1000) return true;
     _lastStorageCheckMs=now; uint64_t freeBytes=_storage->freeBytes();
     if (freeBytes < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) {
@@ -80,15 +80,25 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
         }
         return true;
     }
+
     if (!_storage || !_storage->ready()) { Serial.println("[LOGGER] Storage not ready"); return false; }
+    if (!_storage->writable()) { Serial.print("[LOGGER] Storage not writable: "); Serial.println(_storage->lastError()); return false; }
     if (_storage->freeBytes() < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) { Serial.println("[LOGGER] Insufficient free storage - recording not started"); return false; }
 
     _filename=createFilename(t,mode);
     _kmlFilename=_filename; _kmlFilename.replace(".vbo",".kml");
+
     _file=_storage->openWrite(_filename);
     if (!_file) { _writeErrors++; Serial.println("[LOGGER] Unable to create VBO session"); return false; }
+
     _kmlFile=_storage->openFileWrite(_kmlFilename);
-    if (!_kmlFile) { _writeErrors++; _file.close(); Serial.println("[LOGGER] Unable to create companion KML"); return false; }
+    if (!_kmlFile) {
+        _writeErrors++;
+        _file.close();
+        _storage->removeFile(_filename);
+        Serial.println("[LOGGER] Unable to create companion KML; partial VBO removed");
+        return false;
+    }
 
     writeHeader(_file,mode); writeKmlHeader(_kmlFile,_kmlFilename); _file.flush(); _kmlFile.flush();
     _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false;
