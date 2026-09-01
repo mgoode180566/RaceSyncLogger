@@ -8,6 +8,40 @@ Once powered, RaceSync acquires GPS, detects when the motorcycle begins moving, 
 
 The normal intention is simple: **power it on, ride, download your sessions afterwards.**
 
+## Startup diagnostics
+
+Every time RaceSync is powered on it performs a startup diagnostic check before normal operation begins.
+
+While the checks are running, the onboard RGB LED remains **solid red**. RaceSync checks the main subsystems used for logging, including Wi-Fi, storage/microSD, logger initialisation, GPS communications and the sensor subsystem.
+
+The GPS diagnostic checks that the receiver is actually communicating with RaceSync. A GPS position fix is not required for this startup test, so starting the unit indoors or before the receiver has a clear view of the sky should not by itself cause a GPS failure code.
+
+If all startup checks pass, RaceSync confirms this with **five green flashes**. After the fifth green flash the LED returns to normal operating behaviour and the logger is ready for use.
+
+If one or more checks fail, RaceSync displays a coded sequence of **red flashes**:
+
+```text
+1 red flash   = Wi-Fi failure
+2 red flashes = microSD / storage failure
+3 red flashes = logger initialisation failure
+4 red flashes = GPS communications failure
+5 red flashes = sensor subsystem failure
+```
+
+A failure code is repeated three times to make it easier to count. If more than one subsystem has failed, RaceSync displays each code in turn with a longer pause between codes.
+
+For example:
+
+```text
+flash flash   pause   flash flash   pause   flash flash
+```
+
+repeated three times indicates **code 2 — storage/microSD failure**.
+
+If RaceSync detects an SD-card fault but is able to fall back to internal storage, the SD/storage diagnostic is still reported as a failure. This is intentional: for normal track use the rider should know that the microSD card is not operating correctly before going onto the circuit.
+
+After showing any failure codes RaceSync continues booting so that the Wi-Fi/web interface and serial diagnostics remain available where possible. A red diagnostic code should therefore be investigated before relying on the logger for a track session.
+
 ## What RaceSync records
 
 RaceSync uses a high-speed GPS receiver operating at up to **25 samples per second**. A session records GPS position, speed, direction, altitude, satellite/fix information and accurate sample timing.
@@ -132,19 +166,21 @@ Deleting old sessions is useful for keeping the SD card tidy, but it is not nece
 ## Typical track-day workflow
 
 1. Power the motorcycle and RaceSync.
-2. Allow the GPS to obtain a fix.
-3. Ride out of the paddock.
-4. RaceSync starts recording automatically.
-5. Confirm the recording LED is flashing if it is visible.
-6. Complete the track session normally.
-7. Return to the paddock.
-8. Allow RaceSync to stop and close the recording.
-9. Connect your laptop, tablet or phone to RaceSync Wi-Fi.
-10. Open `192.168.4.1`.
-11. Look for the **NEW** session.
-12. Use **Download VBO**, **Download KML**, or **Download All New**.
-13. Open the downloaded VBO in your motorsport analysis software.
-14. Delete old sessions from RaceSync when no longer required on the logger.
+2. Watch the startup LED diagnostics.
+3. Confirm that RaceSync finishes with **five green flashes**.
+4. Allow the GPS to obtain a position fix if it has not already done so.
+5. Ride out of the paddock.
+6. RaceSync starts recording automatically.
+7. Confirm the recording LED is flashing if it is visible.
+8. Complete the track session normally.
+9. Return to the paddock.
+10. Allow RaceSync to stop and close the recording.
+11. Connect your laptop, tablet or phone to RaceSync Wi-Fi.
+12. Open `192.168.4.1`.
+13. Look for the **NEW** session.
+14. Use **Download VBO**, **Download KML**, or **Download All New**.
+15. Open the downloaded VBO in your motorsport analysis software.
+16. Delete old sessions from RaceSync when no longer required on the logger.
 
 No interaction with RaceSync should be necessary while riding.
 
@@ -164,7 +200,7 @@ The same unit can therefore be used at different tracks without changing the log
 
 ## What the rider needs to do
 
-**Before riding:** Power RaceSync and confirm that the system/GPS is ready.
+**Before riding:** Power RaceSync, watch the startup diagnostics and confirm **five green flashes**. Then confirm that GPS is ready.
 
 **While riding:** Nothing. RaceSync automatically handles recording.
 
