@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <Preferences.h>
 
 #include "../config/RaceSyncTypes.h"
 #include "RaceSyncStorage.h"
@@ -22,6 +23,11 @@ public:
     uint32_t lastWriteAgeMs() const;
     uint32_t recordingSeconds() const;
 
+    double startSpeedKmh() const;
+    double stopSpeedKmh() const;
+    uint32_t stopDelaySeconds() const;
+    bool updateAutomaticSettings(double startSpeedKmh, uint32_t stopDelaySeconds);
+
 private:
     RaceSyncStorage* _storage = nullptr;
     bool _recording = false;
@@ -39,6 +45,11 @@ private:
     uint32_t _writeErrors = 0;
     uint32_t _lastStorageCheckMs = 0;
 
+    Preferences _settingsPreferences;
+    double _startSpeedKmh = 10.0;
+    double _stopSpeedKmh = 3.0;
+    uint32_t _stopDelayMs = 60000;
+
     bool start(const Telemetry& telemetry, DataMode mode, bool manual = false);
     void stop();
     bool storageHasSafeFreeSpace();
@@ -49,4 +60,5 @@ private:
     void writeKmlSample(const Telemetry& telemetry);
     String createFilename(const Telemetry& telemetry, DataMode mode) const;
     String createVBoxLine(const Telemetry& telemetry) const;
+    void loadAutomaticSettings();
 };

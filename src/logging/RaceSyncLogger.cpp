@@ -1,7 +1,27 @@
 #include "RaceSyncLogger.h"
 #include "../config/RaceSyncConfig.h"
 
-bool RaceSyncLogger::begin(RaceSyncStorage& storage) { _storage = &storage; return storage.ready() && storage.writable(); }
+void RaceSyncLogger::loadAutomaticSettings()
+{
+    _settingsPreferences.begin("racesync", false);
+    _startSpeedKmh = _settingsPreferences.getDouble("logStartKmh", RaceSyncConfig::LOG_START_SPEED_KMH);
+    _stopSpeedKmh = RaceSyncConfig::LOG_STOP_SPEED_KMH;
+    _stopDelayMs = _settingsPreferences.getUInt("logStopDelay", RaceSyncConfig::LOG_STOP_DELAY_MS);
+
+    if (_startSpeedKmh < 1.0 || _startSpeedKmh > 100.0) _startSpeedKmh = RaceSyncConfig::LOG_START_SPEED_KMH;
+    if (_stopDelayMs < 1000 || _stopDelayMs > 600000) _stopDelayMs = RaceSyncConfig::LOG_STOP_DELAY_MS;
+
+    Serial.printf("[LOGGER] Auto settings: start %.1f km/h, stop <= %.1f km/h for %lu s\n",
+                  _startSpeedKmh, _stopSpeedKmh, (unsigned long)(_stopDelayMs / 1000));
+}
+
+bool RaceSyncLogger::begin(RaceSyncStorage& storage)
+{
+    _storage = &storage;
+    loadAutomaticSettings();
+    return storage.ready() && storage.writable();
+}
+
 bool RaceSyncLogger::recording() const { return _recording; }
 bool RaceSyncLogger::manualSession() const { return _recording && _manualSession; }
 const String& RaceSyncLogger::currentFilename() const { return _filename; }
@@ -9,6 +29,25 @@ uint32_t RaceSyncLogger::sampleCount() const { return _sampleCount; }
 uint32_t RaceSyncLogger::storageWriteErrors() const { return _writeErrors; }
 uint32_t RaceSyncLogger::lastWriteAgeMs() const { return _lastWriteMs == 0 ? UINT32_MAX : millis() - _lastWriteMs; }
 uint32_t RaceSyncLogger::recordingSeconds() const { return (_recording && _startedMs) ? (millis() - _startedMs) / 1000 : 0; }
+double RaceSyncLogger::startSpeedKmh() const { return _startSpeedKmh; }
+double RaceSyncLogger::stopSpeedKmh() const { return _stopSpeedKmh; }
+uint32_t RaceSyncLogger::stopDelaySeconds() const { return _stopDelayMs / 1000; }
+
+bool RaceSyncLogger::updateAutomaticSettings(double startSpeedKmh, uint32_t stopDelaySeconds)
+{
+    if (_recording) return false;
+    if (startSpeedKmh < 1.0 || startSpeedKmh > 100.0) return false;
+    if (stopDelaySeconds < 1 || stopDelaySeconds > 600) return false;
+
+    _startSpeedKmh = startSpeedKmh;
+    _stopDelayMs = stopDelaySeconds * 1000UL;
+    _settingsPreferences.putDouble("logStartKmh", _startSpeedKmh);
+    _settingsPreferences.putUInt("logStopDelay", _stopDelayMs);
+
+    Serial.printf("[LOGGER] Settings saved: start %.1f km/h, stop delay %lu s\n",
+                  _startSpeedKmh, (unsigned long)stopDelaySeconds);
+    return true;
+}
 
 String RaceSyncLogger::createFilename(const Telemetry& t, DataMode mode) const
 {
@@ -167,7 +206,7 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
     }
 
     if (_autoStartInhibit) {
-        if (t.velocityKmh < RaceSyncConfig::LOG_START_SPEED_KMH) {
+        if (t.velocityKmh < _startSpeedKmh) {
             _autoStartInhibit = false;
             Serial.println("[LOGGER] Automatic start re-enabled");
         } else {
@@ -175,11 +214,11 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
         }
     }
 
-    if (!_recording && t.velocityKmh >= RaceSyncConfig::LOG_START_SPEED_KMH) start(t,mode,false);
+    if (!_recording && t.velocityKmh >= _startSpeedKmh) start(t,mode,false);
     if (!_recording) return;
     writeSample(t); if (!_recording) return;
-    if (t.velocityKmh <= RaceSyncConfig::LOG_STOP_SPEED_KMH) {
+    if (t.velocityKmh <= _stopSpeedKmh) {
         if (_belowSpeedSince==0) _belowSpeedSince=millis();
-        if (millis()-_belowSpeedSince >= RaceSyncConfig::LOG_STOP_DELAY_MS) stop();
+        if (millis()-_belowSpeedSince >= _stopDelayMs) stop();
     } else _belowSpeedSince=0;
 }
