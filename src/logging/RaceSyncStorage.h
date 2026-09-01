@@ -10,6 +10,10 @@ public:
     bool begin();
     bool beginSd();
     bool ready() const;
+    bool readable() const;
+    bool writable() const;
+    const String& lastError() const;
+    bool runHealthCheck();
 
     String storageType() const;
     String filesystemName() const;
@@ -21,6 +25,7 @@ public:
     bool isSafeFilename(const String& filename) const;
     bool fileExists(const String& filename) const;
     bool exists(const String& filename) const;
+    bool removeFile(const String& filename);
     File openRead(const String& filename);
     File openFileRead(const String& filename);
     File openWrite(const String& filename);
@@ -39,8 +44,12 @@ private:
     fs::FS* _fs = nullptr;
     String _root = "/";
     bool _ready = false;
+    bool _readable = false;
+    bool _writable = false;
+    String _lastError;
 
     String basename(const String& path) const;
     String pathFor(const String& filename) const;
     bool isVBox(const String& filename) const;
+    void setError(const String& message);
 };
