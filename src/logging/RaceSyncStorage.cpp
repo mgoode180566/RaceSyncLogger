@@ -8,6 +8,15 @@ bool RaceSyncStorage::readable() const { return _readable; }
 bool RaceSyncStorage::writable() const { return _writable; }
 const String& RaceSyncStorage::lastError() const { return _lastError; }
 void RaceSyncStorage::setError(const String& message) { _lastError = message; Serial.print("[STORE] "); Serial.println(message); }
+
+bool RaceSyncStorage::selfTestOpenOk() const { return _selfTestOpenOk; }
+size_t RaceSyncStorage::selfTestBytesWritten() const { return _selfTestBytesWritten; }
+bool RaceSyncStorage::selfTestExistsAfterClose() const { return _selfTestExistsAfterClose; }
+bool RaceSyncStorage::selfTestReadBackOpenOk() const { return _selfTestReadBackOpenOk; }
+size_t RaceSyncStorage::selfTestReadBackBytes() const { return _selfTestReadBackBytes; }
+bool RaceSyncStorage::selfTestDeleteOk() const { return _selfTestDeleteOk; }
+const String& RaceSyncStorage::selfTestFilename() const { return _selfTestFilename; }
+
 String RaceSyncStorage::storageType() const { return "SD"; }
 String RaceSyncStorage::filesystemName() const { return "FAT"; }
 bool RaceSyncStorage::usingSd() const { return _ready; }
@@ -44,7 +53,15 @@ File RaceSyncStorage::openFileWrite(const String& filename) { if (!_ready || !_w
 
 bool RaceSyncStorage::runHealthCheck()
 {
-    _readable = false; _writable = false;
+    _readable = false;
+    _writable = false;
+    _selfTestOpenOk = false;
+    _selfTestBytesWritten = 0;
+    _selfTestExistsAfterClose = false;
+    _selfTestReadBackOpenOk = false;
+    _selfTestReadBackBytes = 0;
+    _selfTestDeleteOk = false;
+
     if (!_ready || _fs == nullptr) { setError("SD not mounted"); return false; }
 
     File root = _fs->open(_root);
@@ -52,19 +69,54 @@ bool RaceSyncStorage::runHealthCheck()
     root.close();
     _readable = true;
 
-    const String testName = "RACESYNC.TEST";
-    const String testPath = pathFor(testName);
-    if (_fs->exists(testPath)) _fs->remove(testPath);
+    const String testPath = pathFor(_selfTestFilename);
+    if (_fs->exists(testPath)) {
+        if (!_fs->remove(testPath)) {
+            setError("Could not remove stale SD test file");
+            return false;
+        }
+    }
+
     File test = _fs->open(testPath, FILE_WRITE);
-    if (!test) { setError("SD write test could not create file"); return false; }
+    _selfTestOpenOk = (bool)test;
+    Serial.printf("[STORE-TEST] file=%s open=%s\n", _selfTestFilename.c_str(), _selfTestOpenOk ? "true" : "false");
+    if (!_selfTestOpenOk) { setError("SD write test could not create file"); return false; }
+
     const char* marker = "RaceSync SD test";
-    size_t written = test.print(marker);
-    test.flush(); test.close();
-    if (written == 0 || !_fs->exists(testPath)) { setError("SD write test failed"); return false; }
+    _selfTestBytesWritten = test.print(marker);
+    test.flush();
+    test.close();
+
+    _selfTestExistsAfterClose = _fs->exists(testPath);
+    Serial.printf("[STORE-TEST] bytesWritten=%u existsAfterClose=%s\n",
+                  (unsigned)_selfTestBytesWritten,
+                  _selfTestExistsAfterClose ? "true" : "false");
+
+    if (_selfTestBytesWritten == 0) { setError("SD write returned zero bytes"); return false; }
+    if (!_selfTestExistsAfterClose) { setError("SD test file missing after close"); return false; }
+
     File verify = _fs->open(testPath, FILE_READ);
-    if (!verify || verify.size() == 0) { if (verify) verify.close(); setError("SD read-back test failed"); return false; }
-    verify.close();
-    if (!_fs->remove(testPath) || _fs->exists(testPath)) { setError("SD delete test failed"); return false; }
+    _selfTestReadBackOpenOk = (bool)verify;
+    if (_selfTestReadBackOpenOk) {
+        _selfTestReadBackBytes = verify.size();
+        verify.close();
+    }
+    Serial.printf("[STORE-TEST] readBackOpen=%s readBackBytes=%u\n",
+                  _selfTestReadBackOpenOk ? "true" : "false",
+                  (unsigned)_selfTestReadBackBytes);
+
+    if (!_selfTestReadBackOpenOk) { setError("SD read-back test could not open file"); return false; }
+    if (_selfTestReadBackBytes == 0) { setError("SD read-back file is empty"); return false; }
+
+    const bool removeReturned = _fs->remove(testPath);
+    const bool stillExists = _fs->exists(testPath);
+    _selfTestDeleteOk = removeReturned && !stillExists;
+    Serial.printf("[STORE-TEST] removeReturned=%s existsAfterDelete=%s deleteOk=%s\n",
+                  removeReturned ? "true" : "false",
+                  stillExists ? "true" : "false",
+                  _selfTestDeleteOk ? "true" : "false");
+
+    if (!_selfTestDeleteOk) { setError("SD delete test failed"); return false; }
 
     _writable = true;
     _lastError = "";
@@ -114,7 +166,6 @@ bool RaceSyncStorage::deleteSessionById(uint32_t sessionId, String& deletedFilen
     const String kmlFilename = filename.substring(0, filename.length() - 4) + ".kml";
     const bool hasKml = fileExists(kmlFilename);
 
-    // All directory iterators are closed before any remove operation.
     if (!removeFile(filename)) return false;
     if (hasKml && !removeFile(kmlFilename)) return false;
 
@@ -131,7 +182,6 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
     struct SessionInfo { String filename; size_t sizeBytes; };
     std::vector<SessionInfo> found;
 
-    // First pass: enumerate only. Do not call exists/open/remove while the directory iterator is active.
     File root = _fs->open(_root);
     if (!root || !root.isDirectory()) { if (root) root.close(); setError("Unable to enumerate sessions"); _readable = false; return; }
     File file = root.openNextFile();
@@ -144,7 +194,6 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
     }
     root.close(); _readable = true;
 
-    // Second pass: companion KML checks happen only after the directory has been closed.
     for (const SessionInfo& info : found) {
         const String& filename = info.filename;
         uint32_t id = sessionIdForFilename(filename);
