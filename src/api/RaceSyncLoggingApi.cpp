@@ -9,6 +9,16 @@ void RaceSyncApi::beginManualLoggingRoutes()
             sendJson(503, "{\"started\":false,\"error\":\"SD storage not ready\"}");
             return;
         }
+        if (!_storage.writable()) {
+            JsonDocument doc;
+            doc["started"] = false;
+            doc["error"] = "SD storage is not writable";
+            doc["storageError"] = _storage.lastError();
+            String response;
+            serializeJson(doc, response);
+            sendJson(503, response);
+            return;
+        }
         if (!_telemetry.valid) {
             sendJson(409, "{\"started\":false,\"error\":\"Valid GPS fix required\"}");
             return;
@@ -16,7 +26,13 @@ void RaceSyncApi::beginManualLoggingRoutes()
 
         const bool alreadyRecording = _logger.recording();
         if (!_logger.manualStart(_telemetry, _mode)) {
-            sendJson(500, "{\"started\":false,\"error\":\"Unable to start logging\"}");
+            JsonDocument doc;
+            doc["started"] = false;
+            doc["error"] = "Unable to start logging";
+            if (_storage.lastError().length()) doc["storageError"] = _storage.lastError();
+            String response;
+            serializeJson(doc, response);
+            sendJson(500, response);
             return;
         }
 
