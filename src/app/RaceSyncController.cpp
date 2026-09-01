@@ -235,6 +235,7 @@ void RaceSyncController::begin()
     _api.beginWebUiRoute();
     _api.beginKmlDownloadRoute();
     _api.beginManualLoggingRoutes();
+    _api.beginSettingsRoutes();
     _api.begin();
 
     setStatusLed(0, 0, 0);
