@@ -14,46 +14,251 @@ void RaceSyncController::incrementBootCount()
     _preferences.putUInt("bootCount", _bootCount);
 }
 
-void RaceSyncController::setLoggingLed(bool on)
+void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
 #if defined(RGB_BUILTIN)
-    rgbLedWrite(RGB_BUILTIN, 0, on ? 32 : 0, 0);
+    rgbLedWrite(RGB_BUILTIN, red, green, blue);
 #elif defined(LED_BUILTIN)
-    digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
+    digitalWrite(LED_BUILTIN, (red || green || blue) ? HIGH : LOW);
 #else
-    (void)on;
+    (void)red;
+    (void)green;
+    (void)blue;
 #endif
+}
+
+void RaceSyncController::setLoggingLed(bool on)
+{
+    setStatusLed(0, on ? 32 : 0, 0);
     _loggingLedOn = on;
 }
 
 void RaceSyncController::updateLoggingLed()
 {
-    if (!_logger.recording()) { if (_loggingLedOn) setLoggingLed(false); _loggingLedCycleStartedMs = 0; return; }
+    if (!_logger.recording())
+    {
+        if (_loggingLedOn) setLoggingLed(false);
+        _loggingLedCycleStartedMs = 0;
+        return;
+    }
+
     const uint32_t now = millis();
-    if (_loggingLedCycleStartedMs == 0) { _loggingLedCycleStartedMs = now; setLoggingLed(true); return; }
+
+    if (_loggingLedCycleStartedMs == 0)
+    {
+        _loggingLedCycleStartedMs = now;
+        setLoggingLed(true);
+        return;
+    }
+
     const uint32_t elapsed = now - _loggingLedCycleStartedMs;
-    if (elapsed >= 1000) { _loggingLedCycleStartedMs = now; setLoggingLed(true); }
-    else if (elapsed >= 100 && _loggingLedOn) setLoggingLed(false);
+
+    if (elapsed >= 1000)
+    {
+        _loggingLedCycleStartedMs = now;
+        setLoggingLed(true);
+    }
+    else if (elapsed >= 100 && _loggingLedOn)
+    {
+        setLoggingLed(false);
+    }
+}
+
+bool RaceSyncController::waitForGpsTraffic(uint32_t timeoutMs)
+{
+    const uint32_t started = millis();
+    const uint64_t packetsAtStart = _gps.packetCount();
+
+    while ((millis() - started) < timeoutMs)
+    {
+        _gps.update(_telemetry);
+
+        if (_gps.packetCount() > packetsAtStart)
+        {
+            return true;
+        }
+
+        delay(2);
+    }
+
+    return false;
+}
+
+uint8_t RaceSyncController::runStartupDiagnostics()
+{
+    uint8_t failures = 0;
+
+    Serial.println();
+    Serial.println("[DIAG] =================================");
+    Serial.println("[DIAG] RaceSync startup diagnostics");
+    Serial.println("[DIAG] =================================");
+
+    // Red remains illuminated while the diagnostic sequence is running.
+    setStatusLed(40, 0, 0);
+
+    Serial.print("[DIAG] 1 Wi-Fi AP ............... ");
+    const bool wifiOk = _wifi.begin();
+    if (wifiOk)
+    {
+        Serial.println("PASS");
+    }
+    else
+    {
+        Serial.println("FAIL");
+        failures |= (1U << (DIAG_WIFI - 1));
+    }
+
+    Serial.print("[DIAG] 2 microSD/storage ........ ");
+    const bool storageMounted = _storage.begin();
+    const bool storageHealthy = storageMounted && _storage.runHealthCheck();
+    const bool sdOk = storageHealthy && _storage.usingSd();
+    if (sdOk)
+    {
+        Serial.println("PASS");
+    }
+    else
+    {
+        Serial.print("FAIL");
+        if (storageHealthy && !_storage.usingSd()) Serial.print(" (SD unavailable; fallback storage active)");
+        if (_storage.lastError().length()) { Serial.print(" - "); Serial.print(_storage.lastError()); }
+        Serial.println();
+        failures |= (1U << (DIAG_STORAGE - 1));
+    }
+
+    Serial.print("[DIAG] 3 logger ................. ");
+    const bool loggerOk = _logger.begin(_storage);
+    if (loggerOk)
+    {
+        Serial.println("PASS");
+    }
+    else
+    {
+        Serial.println("FAIL");
+        failures |= (1U << (DIAG_LOGGER - 1));
+    }
+
+    Serial.print("[DIAG] 4 GPS communications ..... ");
+    const bool gpsStarted = _gps.begin();
+    const bool gpsTraffic = gpsStarted && waitForGpsTraffic(5000);
+    if (gpsTraffic)
+    {
+        Serial.print("PASS (");
+        Serial.print((unsigned long)_gps.packetCount());
+        Serial.println(" packet(s))");
+    }
+    else
+    {
+        Serial.println("FAIL (no valid GPS packets within 5 seconds)");
+        failures |= (1U << (DIAG_GPS - 1));
+    }
+
+    Serial.print("[DIAG] 5 sensor subsystem ....... ");
+    const bool sensorsOk = _sensors.begin();
+    if (sensorsOk)
+    {
+        Serial.println("PASS");
+    }
+    else
+    {
+        Serial.println("FAIL");
+        failures |= (1U << (DIAG_SENSORS - 1));
+    }
+
+    Serial.println("[DIAG] =================================");
+
+    return failures;
+}
+
+void RaceSyncController::flashFailureCode(uint8_t code)
+{
+    for (uint8_t i = 0; i < code; ++i)
+    {
+        setStatusLed(48, 0, 0);
+        delay(220);
+        setStatusLed(0, 0, 0);
+        delay(220);
+    }
+
+    // Long gap separates one diagnostic code from the next.
+    delay(850);
+}
+
+void RaceSyncController::showDiagnosticFailures(uint8_t failureMask)
+{
+    Serial.println("[DIAG] STARTUP DIAGNOSTICS FAILED");
+    Serial.println("[DIAG] Red flash codes:");
+    Serial.println("[DIAG]   1 = Wi-Fi");
+    Serial.println("[DIAG]   2 = microSD/storage");
+    Serial.println("[DIAG]   3 = logger");
+    Serial.println("[DIAG]   4 = GPS communications");
+    Serial.println("[DIAG]   5 = sensor subsystem");
+
+    // Repeat the complete failure set three times so it is easy to observe,
+    // then continue booting so the web interface remains available.
+    for (uint8_t repeat = 0; repeat < 3; ++repeat)
+    {
+        for (uint8_t code = DIAG_WIFI; code <= DIAG_SENSORS; ++code)
+        {
+            if (failureMask & (1U << (code - 1)))
+            {
+                flashFailureCode(code);
+            }
+        }
+
+        delay(1200);
+    }
+
+    setStatusLed(0, 0, 0);
+}
+
+void RaceSyncController::showDiagnosticSuccess()
+{
+    Serial.println("[DIAG] ALL STARTUP DIAGNOSTICS PASSED");
+    Serial.println("[DIAG] Signalling five green flashes");
+
+    for (uint8_t i = 0; i < 5; ++i)
+    {
+        setStatusLed(0, 48, 0);
+        delay(180);
+        setStatusLed(0, 0, 0);
+        delay(180);
+    }
 }
 
 void RaceSyncController::begin()
 {
-    Serial.println(); Serial.println("============================="); Serial.println(" RaceSync V2.1 Modular"); Serial.println("=============================");
+    Serial.println();
+    Serial.println("=============================");
+    Serial.println(" RaceSync V2.1 Modular");
+    Serial.println("=============================");
+
 #if defined(LED_BUILTIN) && !defined(RGB_BUILTIN)
     pinMode(LED_BUILTIN, OUTPUT);
 #endif
-    setLoggingLed(false);
+
+    setStatusLed(40, 0, 0);
     incrementBootCount();
-    _wifi.begin();
-    _storage.begin();
-    _logger.begin(_storage);
-    _gps.begin();
-    _sensors.begin();
+
+    const uint8_t diagnosticFailures = runStartupDiagnostics();
+
+    if (diagnosticFailures == 0)
+    {
+        showDiagnosticSuccess();
+    }
+    else
+    {
+        showDiagnosticFailures(diagnosticFailures);
+    }
 
     _api.beginWebUiRoute();
     _api.beginKmlDownloadRoute();
     _api.beginManualLoggingRoutes();
     _api.begin();
+
+    setStatusLed(0, 0, 0);
+    _loggingLedOn = false;
+    _loggingLedCycleStartedMs = 0;
+
     Serial.println("[MODE] Waiting for GPS...");
 }
 
@@ -69,6 +274,7 @@ void RaceSyncController::update()
 
     static uint32_t lastLiveIndex = 0;
     bool newSample = false;
+
     if (_mode == DataMode::LIVE && _telemetry.sampleIndex != lastLiveIndex)
     {
         lastLiveIndex = _telemetry.sampleIndex;
@@ -76,7 +282,12 @@ void RaceSyncController::update()
     }
 
     _sensors.update();
-    if (newSample) _logger.processSample(_telemetry, _mode);
+
+    if (newSample)
+    {
+        _logger.processSample(_telemetry, _mode);
+    }
+
     updateLoggingLed();
     _api.update();
     delay(1);
