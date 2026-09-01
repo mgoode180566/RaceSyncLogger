@@ -15,6 +15,14 @@ public:
     const String& lastError() const;
     bool runHealthCheck();
 
+    bool selfTestOpenOk() const;
+    size_t selfTestBytesWritten() const;
+    bool selfTestExistsAfterClose() const;
+    bool selfTestReadBackOpenOk() const;
+    size_t selfTestReadBackBytes() const;
+    bool selfTestDeleteOk() const;
+    const String& selfTestFilename() const;
+
     String storageType() const;
     String filesystemName() const;
     bool usingSd() const;
@@ -47,6 +55,14 @@ private:
     bool _readable = false;
     bool _writable = false;
     String _lastError;
+
+    String _selfTestFilename = "RACESYNC_TEST.TXT";
+    bool _selfTestOpenOk = false;
+    size_t _selfTestBytesWritten = 0;
+    bool _selfTestExistsAfterClose = false;
+    bool _selfTestReadBackOpenOk = false;
+    size_t _selfTestReadBackBytes = 0;
+    bool _selfTestDeleteOk = false;
 
     String basename(const String& path) const;
     String pathFor(const String& filename) const;
