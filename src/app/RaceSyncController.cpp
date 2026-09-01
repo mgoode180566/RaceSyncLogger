@@ -84,6 +84,22 @@ bool RaceSyncController::waitForGpsTraffic(uint32_t timeoutMs)
     return false;
 }
 
+void RaceSyncController::flashDiagnosticResult(uint8_t code, bool passed)
+{
+    const uint8_t red = passed ? 0 : 48;
+    const uint8_t green = passed ? 48 : 0;
+
+    for (uint8_t i = 0; i < code; ++i)
+    {
+        setStatusLed(red, green, 0);
+        delay(220);
+        setStatusLed(0, 0, 0);
+        delay(220);
+    }
+
+    delay(700);
+}
+
 uint8_t RaceSyncController::runStartupDiagnostics()
 {
     uint8_t failures = 0;
@@ -93,7 +109,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
     Serial.println("[DIAG] RaceSync startup diagnostics");
     Serial.println("[DIAG] =================================");
 
-    // Red remains illuminated while the diagnostic sequence is running.
+    // Solid red indicates that startup diagnostics are in progress.
     setStatusLed(40, 0, 0);
 
     Serial.print("[DIAG] 1 Wi-Fi AP ............... ");
@@ -107,6 +123,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println("FAIL");
         failures |= (1U << (DIAG_WIFI - 1));
     }
+    flashDiagnosticResult(DIAG_WIFI, wifiOk);
 
     Serial.print("[DIAG] 2 microSD/storage ........ ");
     const bool storageMounted = _storage.begin();
@@ -124,6 +141,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println();
         failures |= (1U << (DIAG_STORAGE - 1));
     }
+    flashDiagnosticResult(DIAG_STORAGE, sdOk);
 
     Serial.print("[DIAG] 3 logger ................. ");
     const bool loggerOk = _logger.begin(_storage);
@@ -136,6 +154,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println("FAIL");
         failures |= (1U << (DIAG_LOGGER - 1));
     }
+    flashDiagnosticResult(DIAG_LOGGER, loggerOk);
 
     Serial.print("[DIAG] 4 GPS communications ..... ");
     const bool gpsStarted = _gps.begin();
@@ -151,6 +170,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println("FAIL (no valid GPS packets within 5 seconds)");
         failures |= (1U << (DIAG_GPS - 1));
     }
+    flashDiagnosticResult(DIAG_GPS, gpsTraffic);
 
     Serial.print("[DIAG] 5 sensor subsystem ....... ");
     const bool sensorsOk = _sensors.begin();
@@ -163,62 +183,21 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println("FAIL");
         failures |= (1U << (DIAG_SENSORS - 1));
     }
+    flashDiagnosticResult(DIAG_SENSORS, sensorsOk);
 
     Serial.println("[DIAG] =================================");
 
     return failures;
 }
 
-void RaceSyncController::flashFailureCode(uint8_t code)
+void RaceSyncController::showDiagnosticComplete()
 {
-    for (uint8_t i = 0; i < code; ++i)
-    {
-        setStatusLed(48, 0, 0);
-        delay(220);
-        setStatusLed(0, 0, 0);
-        delay(220);
-    }
-
-    // Long gap separates one diagnostic code from the next.
-    delay(850);
-}
-
-void RaceSyncController::showDiagnosticFailures(uint8_t failureMask)
-{
-    Serial.println("[DIAG] STARTUP DIAGNOSTICS FAILED");
-    Serial.println("[DIAG] Red flash codes:");
-    Serial.println("[DIAG]   1 = Wi-Fi");
-    Serial.println("[DIAG]   2 = microSD/storage");
-    Serial.println("[DIAG]   3 = logger");
-    Serial.println("[DIAG]   4 = GPS communications");
-    Serial.println("[DIAG]   5 = sensor subsystem");
-
-    // Repeat the complete failure set three times so it is easy to observe,
-    // then continue booting so the web interface remains available.
-    for (uint8_t repeat = 0; repeat < 3; ++repeat)
-    {
-        for (uint8_t code = DIAG_WIFI; code <= DIAG_SENSORS; ++code)
-        {
-            if (failureMask & (1U << (code - 1)))
-            {
-                flashFailureCode(code);
-            }
-        }
-
-        delay(1200);
-    }
-
-    setStatusLed(0, 0, 0);
-}
-
-void RaceSyncController::showDiagnosticSuccess()
-{
-    Serial.println("[DIAG] ALL STARTUP DIAGNOSTICS PASSED");
-    Serial.println("[DIAG] Signalling five green flashes");
+    Serial.println("[DIAG] Startup diagnostic sequence complete");
+    Serial.println("[DIAG] Signalling five blue flashes");
 
     for (uint8_t i = 0; i < 5; ++i)
     {
-        setStatusLed(0, 48, 0);
+        setStatusLed(0, 0, 48);
         delay(180);
         setStatusLed(0, 0, 0);
         delay(180);
@@ -243,12 +222,15 @@ void RaceSyncController::begin()
 
     if (diagnosticFailures == 0)
     {
-        showDiagnosticSuccess();
+        Serial.println("[DIAG] ALL STARTUP DIAGNOSTICS PASSED");
     }
     else
     {
-        showDiagnosticFailures(diagnosticFailures);
+        Serial.print("[DIAG] STARTUP DIAGNOSTICS COMPLETED WITH FAILURE MASK 0x");
+        Serial.println(diagnosticFailures, HEX);
     }
+
+    showDiagnosticComplete();
 
     _api.beginWebUiRoute();
     _api.beginKmlDownloadRoute();
