@@ -20,7 +20,7 @@ RaceSyncApi::RaceSyncApi(
 void RaceSyncApi::addCorsHeaders()
 {
     _server.sendHeader("Access-Control-Allow-Origin", "*");
-    _server.sendHeader("Access-Control-Allow-Methods", "GET,DELETE,OPTIONS");
+    _server.sendHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
     _server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -163,9 +163,9 @@ void RaceSyncApi::handleStatus()
     logger["recording"] = _logger.recording();
     logger["currentFile"] = _logger.currentFilename();
     logger["samplesWritten"] = _logger.sampleCount();
-    logger["startSpeedKmh"] = RaceSyncConfig::LOG_START_SPEED_KMH;
-    logger["stopSpeedKmh"] = RaceSyncConfig::LOG_STOP_SPEED_KMH;
-    logger["stopDelaySeconds"] = RaceSyncConfig::LOG_STOP_DELAY_MS / 1000;
+    logger["startSpeedKmh"] = _logger.startSpeedKmh();
+    logger["stopSpeedKmh"] = _logger.stopSpeedKmh();
+    logger["stopDelaySeconds"] = _logger.stopDelaySeconds();
     logger["recordingSeconds"] = _logger.recordingSeconds();
     uint32_t writeAge = _logger.lastWriteAgeMs();
     logger["lastWriteAgeMs"] = writeAge == UINT32_MAX ? -1 : (int64_t)writeAge;
