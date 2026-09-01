@@ -54,7 +54,6 @@ private:
 
     uint8_t runStartupDiagnostics();
     bool waitForGpsTraffic(uint32_t timeoutMs);
-    void showDiagnosticFailures(uint8_t failureMask);
-    void flashFailureCode(uint8_t code);
-    void showDiagnosticSuccess();
+    void flashDiagnosticResult(uint8_t code, bool passed);
+    void showDiagnosticComplete();
 };
