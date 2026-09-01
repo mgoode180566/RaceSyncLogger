@@ -140,6 +140,16 @@ void RaceSyncApi::handleStatus()
     storage["readable"] = _storage.readable();
     storage["writable"] = _storage.writable();
     storage["lastError"] = _storage.lastError();
+
+    JsonObject selfTest = storage["selfTest"].to<JsonObject>();
+    selfTest["filename"] = _storage.selfTestFilename();
+    selfTest["openOk"] = _storage.selfTestOpenOk();
+    selfTest["bytesWritten"] = _storage.selfTestBytesWritten();
+    selfTest["existsAfterClose"] = _storage.selfTestExistsAfterClose();
+    selfTest["readBackOpenOk"] = _storage.selfTestReadBackOpenOk();
+    selfTest["readBackBytes"] = _storage.selfTestReadBackBytes();
+    selfTest["deleteOk"] = _storage.selfTestDeleteOk();
+
     storage["totalBytes"] = totalStorage;
     storage["usedBytes"] = usedStorage;
     storage["freeBytes"] = freeStorage;
