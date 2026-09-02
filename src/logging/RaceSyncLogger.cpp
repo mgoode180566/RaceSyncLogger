@@ -104,21 +104,64 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     if (_storage->freeBytes() < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) { Serial.println("[LOGGER] Insufficient free storage - recording not started"); return false; }
 
     _filename=createFilename(t,mode);
-    _file=_storage->openWrite(_filename);
-    if (!_file) { _writeErrors++; Serial.println("[LOGGER] Unable to create VBO session"); return false; }
+    _partFilename=_filename;
+    _partFilename.replace(".vbo", ".part");
+
+    _file=_storage->openPartWrite(_partFilename);
+    if (!_file) { _writeErrors++; Serial.println("[LOGGER] Unable to create incomplete .part session"); return false; }
 
     writeHeader(_file,mode); _file.flush();
     _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false;
-    Serial.printf("[LOGGER] Started: %s (%s)\n",_filename.c_str(), manual ? "MANUAL" : "AUTO");
+    Serial.printf("[LOGGER] Started: %s -> %s (%s)\n",
+                  _partFilename.c_str(),
+                  _filename.c_str(),
+                  manual ? "MANUAL" : "AUTO");
     return true;
 }
 
-void RaceSyncLogger::stop()
+void RaceSyncLogger::stop(bool finalize)
 {
     if (!_recording) return;
-    if (_file) { _file.flush(); _file.close(); }
-    _recording=false; _manualSession=false; _belowSpeedSince=0;
-    Serial.printf("[LOGGER] Closed: %s samples=%u\n",_filename.c_str(),_sampleCount);
+
+    if (_file)
+    {
+        _file.flush();
+        _file.close();
+    }
+
+    bool finalized = false;
+    if (finalize && _storage)
+    {
+        finalized = _storage->finalizePartFile(_partFilename, _filename);
+        if (!finalized)
+        {
+            ++_writeErrors;
+            Serial.printf(
+                "[LOGGER] Session close failed; recoverable file retained as %s\n",
+                _partFilename.c_str()
+            );
+        }
+    }
+    else
+    {
+        Serial.printf(
+            "[LOGGER] Incomplete session retained for recovery: %s\n",
+            _partFilename.c_str()
+        );
+    }
+
+    _recording=false;
+    _manualSession=false;
+    _belowSpeedSince=0;
+
+    if (finalized)
+    {
+        Serial.printf(
+            "[LOGGER] Finalized: %s samples=%u\n",
+            _filename.c_str(),
+            _sampleCount
+        );
+    }
 }
 
 bool RaceSyncLogger::manualStart(const Telemetry& telemetry, DataMode mode)
@@ -147,7 +190,7 @@ void RaceSyncLogger::writeSample(const Telemetry& t)
     if (!_recording) return;
     if (!storageHasSafeFreeSpace()) { stop(); return; }
     size_t vboWritten=_file.println(createVBoxLine(t));
-    if (vboWritten==0) { _writeErrors++; Serial.println("[LOGGER] VBO write failed - closing session"); stop(); return; }
+    if (vboWritten==0) { _writeErrors++; Serial.println("[LOGGER] VBO write failed - retaining .part for recovery"); stop(false); return; }
     _sampleCount++; _lastWriteMs=millis(); uint32_t now=millis();
     if (now-_lastFlush >= RaceSyncConfig::LOG_FLUSH_INTERVAL_MS) { _file.flush(); _lastFlush=now; }
 }
