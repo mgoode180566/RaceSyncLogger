@@ -13,7 +13,7 @@ For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 - Engine RPM capture from the isolated ECU tachometer output
 - Automatic start/stop recording based on motorcycle speed
 - microSD session storage with LittleFS fallback
-- Matching VBO and KML files for each RaceSync session
+- KML files generated on demand from completed VBO sessions
 - VBO output for motorsport analysis such as Circuit Tools
 - KML output for GPS route viewing
 - Onboard LED flashes while actively recording
@@ -117,13 +117,13 @@ RS_20260829_103215.vbo
 RS_20260829_103215.kml
 ```
 
-The pair is treated as one logical session. Deleting the session removes the VBO and companion KML when present.
+The VBO is the only file written during recording. KML is produced from it on demand and is not stored on the microSD card.
 
 ## VBO and KML
 
 The VBO is the primary motorsport data file and contains GPS position, speed, heading, altitude, timing and other available channels in a VBOX-compatible text format. RaceSync remains circuit-independent; analysis software performs track recognition, lap timing and detailed analysis afterwards.
 
-A KML GPS track is generated alongside the VBO for quick route viewing in compatible mapping software. KML generation is secondary to the VBO so a KML problem should not prevent primary logging.
+RaceSync does not write KML during a track session. Selecting **Generate KML** in the web interface streams a KML download generated directly from the completed VBO. The generated KML is not stored on the microSD card, keeping the track-time write path focused exclusively on the primary VBO.
 
 ## REST API
 
