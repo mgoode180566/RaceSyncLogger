@@ -16,6 +16,9 @@ bool RaceSyncStorage::selfTestReadBackOpenOk() const { return _selfTestReadBackO
 size_t RaceSyncStorage::selfTestReadBackBytes() const { return _selfTestReadBackBytes; }
 bool RaceSyncStorage::selfTestDeleteOk() const { return _selfTestDeleteOk; }
 const String& RaceSyncStorage::selfTestFilename() const { return _selfTestFilename; }
+uint32_t RaceSyncStorage::recoveredPartFiles() const { return _recoveredPartFiles; }
+uint32_t RaceSyncStorage::failedPartRecoveries() const { return _failedPartRecoveries; }
+const String& RaceSyncStorage::lastRecoveredFilename() const { return _lastRecoveredFilename; }
 
 String RaceSyncStorage::storageType() const { return "SD"; }
 String RaceSyncStorage::filesystemName() const { return "FAT"; }
@@ -30,6 +33,7 @@ String RaceSyncStorage::cardTypeName() const
 uint64_t RaceSyncStorage::cardSizeBytes() const { return usingSd() ? SD.cardSize() : 0; }
 String RaceSyncStorage::basename(const String& path) const { int slash = path.lastIndexOf('/'); return slash < 0 ? path : path.substring(slash + 1); }
 bool RaceSyncStorage::isVBox(const String& filename) const { String lower = filename; lower.toLowerCase(); return lower.endsWith(".vbo"); }
+bool RaceSyncStorage::isPart(const String& filename) const { String lower = filename; lower.toLowerCase(); return lower.endsWith(".part"); }
 bool RaceSyncStorage::isSafeFilename(const String& filename) const { return filename.length() > 0 && filename.indexOf("..") < 0 && filename.indexOf('/') < 0 && filename.indexOf('\\') < 0; }
 bool RaceSyncStorage::isSafeVBoxFilename(const String& filename) const { return isSafeFilename(filename) && isVBox(filename); }
 String RaceSyncStorage::pathFor(const String& filename) const { return _root == "/" ? "/" + filename : _root + "/" + filename; }
@@ -49,6 +53,52 @@ bool RaceSyncStorage::removeFile(const String& filename)
 File RaceSyncStorage::openFileRead(const String& filename) { if (!fileExists(filename)) return File(); return _fs->open(pathFor(filename), FILE_READ); }
 File RaceSyncStorage::openRead(const String& filename) { if (!isSafeVBoxFilename(filename)) return File(); return openFileRead(filename); }
 File RaceSyncStorage::openWrite(const String& filename) { if (!_ready || !_writable || _fs == nullptr || !isSafeVBoxFilename(filename)) return File(); return _fs->open(pathFor(filename), FILE_WRITE); }
+File RaceSyncStorage::openPartWrite(const String& filename)
+{
+    if (!_ready || !_writable || _fs == nullptr || !isSafeFilename(filename) || !isPart(filename)) return File();
+    return _fs->open(pathFor(filename), FILE_WRITE);
+}
+
+bool RaceSyncStorage::finalizePartFile(const String& partFilename, const String& finalFilename)
+{
+    if (!_ready || !_writable || _fs == nullptr ||
+        !isSafeFilename(partFilename) || !isPart(partFilename) ||
+        !isSafeVBoxFilename(finalFilename))
+    {
+        setError("Invalid session finalization request");
+        return false;
+    }
+
+    const String partPath = pathFor(partFilename);
+    const String finalPath = pathFor(finalFilename);
+
+    if (!_fs->exists(partPath))
+    {
+        setError("Incomplete session file is missing: " + partFilename);
+        return false;
+    }
+
+    if (_fs->exists(finalPath))
+    {
+        setError("Completed session already exists: " + finalFilename);
+        return false;
+    }
+
+    if (!_fs->rename(partPath, finalPath))
+    {
+        setError("Unable to finalize " + partFilename + " as " + finalFilename);
+        return false;
+    }
+
+    if (_fs->exists(partPath) || !_fs->exists(finalPath))
+    {
+        setError("Session rename verification failed");
+        return false;
+    }
+
+    _lastError = "";
+    return true;
+}
 File RaceSyncStorage::openFileWrite(const String& filename) { if (!_ready || !_writable || _fs == nullptr || !isSafeFilename(filename)) return File(); return _fs->open(pathFor(filename), FILE_WRITE); }
 
 bool RaceSyncStorage::runHealthCheck()
@@ -216,6 +266,243 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         session["kmlGeneratedOnDemand"] = true;
         if (kmlAvailable) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id);
         if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
+    }
+}
+
+
+String RaceSyncStorage::availableRecoveredFilename(const String& partFilename) const
+{
+    String base = partFilename.substring(0, partFilename.length() - 5);
+    String candidate = base + ".vbo";
+    if (!_fs->exists(pathFor(candidate))) return candidate;
+
+    for (uint16_t index = 1; index < 1000; ++index)
+    {
+        candidate = base + "_RECOVERED_" + String(index) + ".vbo";
+        if (!_fs->exists(pathFor(candidate))) return candidate;
+    }
+
+    return "";
+}
+
+bool RaceSyncStorage::recoverPartFile(const String& partFilename)
+{
+    if (!_ready || !_writable || _fs == nullptr ||
+        !isSafeFilename(partFilename) || !isPart(partFilename))
+    {
+        return false;
+    }
+
+    const String temporaryFilename = partFilename + ".recovering";
+    const String temporaryPath = pathFor(temporaryFilename);
+
+    if (_fs->exists(temporaryPath) && !_fs->remove(temporaryPath))
+    {
+        setError("Unable to remove stale recovery file for " + partFilename);
+        return false;
+    }
+
+    File source = _fs->open(pathFor(partFilename), FILE_READ);
+    if (!source)
+    {
+        setError("Unable to open interrupted session " + partFilename);
+        return false;
+    }
+
+    File recovered = _fs->open(temporaryPath, FILE_WRITE);
+    if (!recovered)
+    {
+        source.close();
+        setError("Unable to create recovery output for " + partFilename);
+        return false;
+    }
+
+    constexpr size_t LINE_CAPACITY = 640;
+    char line[LINE_CAPACITY];
+    size_t lineLength = 0;
+    bool headerFound = false;
+    bool columnsFound = false;
+    bool dataFound = false;
+    bool inData = false;
+    bool valid = true;
+    uint32_t dataRows = 0;
+    uint32_t completeLines = 0;
+
+    while (source.available())
+    {
+        const int value = source.read();
+        if (value < 0) break;
+
+        const char character = static_cast<char>(value);
+        if (character == '\r') continue;
+
+        if (character == '\n')
+        {
+            line[lineLength] = '\0';
+            String logicalLine(line);
+            logicalLine.trim();
+
+            if (logicalLine == "[header]") headerFound = true;
+            if (logicalLine == "[column names]") columnsFound = true;
+            if (logicalLine == "[data]")
+            {
+                dataFound = true;
+                inData = true;
+            }
+            else if (inData && logicalLine.length() > 0 && logicalLine[0] != '[')
+            {
+                ++dataRows;
+            }
+
+            const size_t lineBytes = recovered.write(
+                reinterpret_cast<const uint8_t*>(line),
+                lineLength
+            );
+            const size_t newlineBytes = recovered.write(
+                reinterpret_cast<const uint8_t*>("\n"),
+                1
+            );
+
+            if (lineBytes != lineLength || newlineBytes != 1)
+            {
+                valid = false;
+                break;
+            }
+
+            lineLength = 0;
+            ++completeLines;
+            continue;
+        }
+
+        if (lineLength >= LINE_CAPACITY - 1)
+        {
+            valid = false;
+            setError("Interrupted session contains an overlong line: " + partFilename);
+            break;
+        }
+
+        line[lineLength++] = character;
+    }
+
+    // Any bytes left in line[] did not end with a newline and are deliberately
+    // discarded as the potentially torn final record.
+    source.close();
+    recovered.flush();
+    recovered.close();
+
+    valid =
+        valid &&
+        headerFound &&
+        columnsFound &&
+        dataFound &&
+        dataRows > 0 &&
+        completeLines > 0;
+
+    if (!valid)
+    {
+        _fs->remove(temporaryPath);
+        if (_lastError.length() == 0)
+            setError("Interrupted session failed VBO validation: " + partFilename);
+        return false;
+    }
+
+    const String finalFilename = availableRecoveredFilename(partFilename);
+    if (finalFilename.length() == 0)
+    {
+        _fs->remove(temporaryPath);
+        setError("Unable to allocate recovered filename for " + partFilename);
+        return false;
+    }
+
+    if (!_fs->rename(temporaryPath, pathFor(finalFilename)))
+    {
+        _fs->remove(temporaryPath);
+        setError("Unable to publish recovered session " + finalFilename);
+        return false;
+    }
+
+    if (!_fs->exists(pathFor(finalFilename)))
+    {
+        setError("Recovered session missing after rename: " + finalFilename);
+        return false;
+    }
+
+    if (!_fs->remove(pathFor(partFilename)))
+    {
+        setError("Recovered VBO created but original .part could not be removed");
+        return false;
+    }
+
+    _lastRecoveredFilename = finalFilename;
+    _lastError = "";
+    Serial.printf(
+        "[RECOVERY] Recovered %s as %s (%lu complete data rows)\n",
+        partFilename.c_str(),
+        finalFilename.c_str(),
+        static_cast<unsigned long>(dataRows)
+    );
+    return true;
+}
+
+void RaceSyncStorage::recoverInterruptedSessions()
+{
+    _recoveredPartFiles = 0;
+    _failedPartRecoveries = 0;
+    _lastRecoveredFilename = "";
+
+    if (!_ready || !_writable || _fs == nullptr) return;
+
+    std::vector<String> interrupted;
+    std::vector<String> staleRecoveryFiles;
+
+    File root = _fs->open(_root);
+    if (!root || !root.isDirectory())
+    {
+        if (root) root.close();
+        setError("Unable to scan for interrupted sessions");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file)
+    {
+        if (!file.isDirectory())
+        {
+            const String filename = basename(file.name());
+            String lower = filename;
+            lower.toLowerCase();
+
+            if (isPart(filename))
+                interrupted.push_back(filename);
+            else if (lower.endsWith(".part.recovering"))
+                staleRecoveryFiles.push_back(filename);
+        }
+
+        file.close();
+        file = root.openNextFile();
+    }
+    root.close();
+
+    for (const String& filename : staleRecoveryFiles)
+    {
+        if (isSafeFilename(filename)) _fs->remove(pathFor(filename));
+    }
+
+    for (const String& filename : interrupted)
+    {
+        if (recoverPartFile(filename))
+            ++_recoveredPartFiles;
+        else
+            ++_failedPartRecoveries;
+    }
+
+    if (!interrupted.empty())
+    {
+        Serial.printf(
+            "[RECOVERY] Scan complete: recovered=%lu failed=%lu\n",
+            static_cast<unsigned long>(_recoveredPartFiles),
+            static_cast<unsigned long>(_failedPartRecoveries)
+        );
     }
 }
 

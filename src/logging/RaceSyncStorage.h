@@ -37,6 +37,12 @@ public:
     File openRead(const String& filename);
     File openFileRead(const String& filename);
     File openWrite(const String& filename);
+    File openPartWrite(const String& filename);
+    bool finalizePartFile(const String& partFilename, const String& finalFilename);
+    void recoverInterruptedSessions();
+    uint32_t recoveredPartFiles() const;
+    uint32_t failedPartRecoveries() const;
+    const String& lastRecoveredFilename() const;
     File openFileWrite(const String& filename);
     uint32_t sessionCount();
     uint32_t sessionIdForFilename(const String& filename) const;
@@ -56,6 +62,10 @@ private:
     bool _writable = false;
     String _lastError;
 
+    uint32_t _recoveredPartFiles = 0;
+    uint32_t _failedPartRecoveries = 0;
+    String _lastRecoveredFilename;
+
     String _selfTestFilename = "RACESYNC_TEST.TXT";
     bool _selfTestOpenOk = false;
     size_t _selfTestBytesWritten = 0;
@@ -67,5 +77,8 @@ private:
     String basename(const String& path) const;
     String pathFor(const String& filename) const;
     bool isVBox(const String& filename) const;
+    bool isPart(const String& filename) const;
+    bool recoverPartFile(const String& partFilename);
+    String availableRecoveredFilename(const String& partFilename) const;
     void setError(const String& message);
 };

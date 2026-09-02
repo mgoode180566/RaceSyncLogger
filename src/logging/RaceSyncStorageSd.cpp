@@ -71,6 +71,10 @@ bool RaceSyncStorage::beginSd()
     }
 
     Serial.println("[STORE] SD health check passed: readable + writable + deletable");
+
+    // Convert any power-loss .part sessions before the API enumerates files.
+    recoverInterruptedSessions();
+
     Serial.printf("[STORE] %u VBO file(s) on SD\n", sessionCount());
     return true;
 }

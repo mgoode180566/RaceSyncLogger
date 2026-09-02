@@ -150,6 +150,11 @@ void RaceSyncApi::handleStatus()
     selfTest["readBackBytes"] = _storage.selfTestReadBackBytes();
     selfTest["deleteOk"] = _storage.selfTestDeleteOk();
 
+    JsonObject recovery = storage["recovery"].to<JsonObject>();
+    recovery["recoveredPartFiles"] = _storage.recoveredPartFiles();
+    recovery["failedPartRecoveries"] = _storage.failedPartRecoveries();
+    recovery["lastRecoveredFilename"] = _storage.lastRecoveredFilename();
+
     storage["totalBytes"] = totalStorage;
     storage["usedBytes"] = usedStorage;
     storage["freeBytes"] = freeStorage;
