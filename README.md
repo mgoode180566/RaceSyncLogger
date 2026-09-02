@@ -1,64 +1,61 @@
 # RaceSync Motorcycle Data Logger
 
-RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. It records 25 Hz GPS and engine RPM data to microSD, creates VBOX-compatible VBO files, and provides its own Wi-Fi web interface for configuration and session management.
+RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. Firmware V2.1 records 25 Hz GPS and engine RPM data to microSD, produces VBOX-compatible VBO sessions, and provides an onboard Wi-Fi interface for configuration and file management.
 
-The operating goal is simple: **power it on, ride, then download the data in the paddock.** No phone, display or rider interaction is required while on track.
+The intended workflow is simple: **power it on, ride, then download the data in the paddock.**
 
-For rider-focused instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 ## Current functionality
 
-- ESP32-S3 standalone logger
-- MicoAir MG-902 / u-blox GPS at 25 Hz
-- Engine RPM capture from the isolated ECU tachometer output
-- Automatic start/stop recording based on motorcycle speed
-- microSD session storage with LittleFS fallback
-- KML files generated on demand from completed VBO sessions
-- Power-loss session recovery using validated `.part` files
-- VBO output for motorsport analysis such as Circuit Tools
-- KML output for GPS route viewing
-- Onboard LED flashes while actively recording
-- Self-contained RaceSync Wi-Fi access point
-- Onboard web session manager at `192.168.4.1`
-- Stored-session list
-- Browser-based NEW/downloaded session indication
-- Download All New VBO sessions
-- Individual VBO and KML downloads
-- Session deletion, including the companion KML
-- REST status, telemetry and session API
-- Demo mode for bench testing
+- MicoAir MG-902/u-blox GPS configured for 25 Hz logging
+- Engine RPM capture from an isolated ECU tachometer signal
+- Automatic recording using configurable speed and stop-delay settings
+- Manual start and stop controls through the web interface
+- FAT32 microSD storage with startup write/read/delete health testing
+- Active sessions written as `.part`, then finalized as `.vbo` after a clean stop
+- Automatic recovery of valid, complete VBO rows following interrupted power
+- KML generated and streamed only when requested through the web interface
+- Recording LED indication and five-part startup diagnostics
+- Session listing, new-session tracking, download, deletion, status and reboot controls
+- REST API for status, telemetry, settings, logging and sessions
 
 ## Normal workflow
 
-1. Power RaceSync and allow the GPS to obtain a fix.
-2. Ride onto the circuit. RaceSync starts automatically when the configured start speed is exceeded.
-3. The onboard LED flashes approximately once per second while recording.
-4. Complete the session normally; no interaction with RaceSync is required.
-5. Return to the paddock and allow RaceSync to stop and close the recording automatically.
-6. Connect a phone, tablet or laptop to the `RaceSync` Wi-Fi network.
-7. Browse to `http://192.168.4.1`.
-8. Download new sessions, individual VBO/KML files, or delete sessions no longer required.
-9. Open the VBO in compatible motorsport analysis software such as Circuit Tools.
+1. Power RaceSync and let startup diagnostics finish.
+2. Give the GPS antenna a clear view of the sky and wait for a valid fix.
+3. Ride away. Logging starts when GPS speed reaches the configured start speed.
+4. The onboard LED gives a short green flash approximately once per second while recording.
+5. After returning, remain below 3 km/h for the configured stop delay.
+6. Wait for the recording LED to stop before removing power whenever possible.
+7. Connect to RaceSync Wi-Fi and open `http://192.168.4.1`.
+8. Download the VBO, generate a KML if required, or delete old sessions.
 
-Current thresholds:
+## Hardware connections
+
+### MG-902 GPS
 
 ```text
 MG-902 TX -> ESP32 GPIO16 (GPS RX)
 MG-902 RX -> ESP32 GPIO17 (GPS TX)
 ```
 
-The logging target is 25 Hz, approximately one GPS sample every 40 ms.
+The firmware starts the receiver at 9600 baud, changes it to 115200 baud, and configures the high-rate UBX stream used for 25 Hz logging.
 
-### MicroSD
+### MicroSD module
+
+The tested SD reader/writer is powered from the 5 V supply:
 
 ```text
+SD VCC  -> 5 V
+SD GND  -> ESP32 GND
 SD CS   -> GPIO10
 SD MOSI -> GPIO11
 SD SCK  -> GPIO12
 SD MISO -> GPIO13
 ```
 
-Use a FAT32-formatted microSD card.
+Use a FAT32-formatted card. SPI runs at 4 MHz for conservative write reliability. ESP32 GPIO pins are 3.3 V only: use the confirmed module with suitable onboard regulation/level handling and never apply 5 V directly to an ESP32 GPIO.
 
 ### ECU tachometer RPM
 
@@ -69,9 +66,9 @@ Optocoupler logic VCC -> ESP32 3V3
 Optocoupler logic GND -> ESP32 GND
 ```
 
-The motorcycle's tachometer signal must **never** be connected directly to the ESP32. RaceSync expects a clean, isolated 3.3 V logic signal from the output side of the optocoupler module.
+Never connect the motorcycle tachometer signal directly to the ESP32. RaceSync expects an isolated 3.3 V logic signal at GPIO4.
 
-RPM capture uses a falling-edge interrupt, rejects edges closer than 1.5 ms, returns zero after 500 ms without a valid pulse, and applies light smoothing to reduce single-period jitter. This avoids blocking the GPS and logging path.
+RPM capture uses a falling-edge interrupt, rejects edges closer than 1.5 ms, returns zero after 500 ms without a pulse, and lightly smooths period jitter. The latest RPM value is attached to each GPS sample and written to the VBO `Revs` channel.
 
 The default calibration is one falling edge per crankshaft revolution:
 
@@ -79,44 +76,25 @@ The default calibration is one falling edge per crankshaft revolution:
 RPM_PULSES_PER_REVOLUTION = 1.0f
 ```
 
-Confirm the result against the motorcycle tachometer before track use. If RaceSync reports exactly half or double the displayed RPM, adjust `RPM_PULSES_PER_REVOLUTION` in `src/sensors/RaceSyncSensors.h`.
+Verify it against the motorcycle tachometer before track use. If RaceSync reads exactly half or twice the displayed RPM, adjust `RPM_PULSES_PER_REVOLUTION` in `src/sensors/RaceSyncSensors.h`.
 
 ## Startup diagnostics and LED sequence
 
-RaceSync runs five startup tests:
+RaceSync runs five checks in order. For each check, its number of flashes identifies it; green means pass and red means fail.
 
-| Flash count | Test |
+| Flashes | Check |
 |---:|---|
 | 1 | Wi-Fi access point |
-| 2 | microSD/storage |
-| 3 | logger |
-| 4 | GPS communications |
+| 2 | microSD storage |
+| 3 | logger initialization |
+| 4 | valid GPS communications within five seconds |
 | 5 | sensor subsystem, including RPM input setup |
 
-For each test:
+The LED is solid red while diagnostics begin. Five blue flashes indicate that the full sequence is complete. Detailed results and the final failure mask are also written to the serial monitor.
 
-- Green flashes indicate a pass.
-- Red flashes indicate a failure.
-- The number of flashes identifies the test.
-- Five blue flashes indicate that the complete diagnostic sequence has finished.
+The GPS check requires valid receiver packets, but not a position fix. A red storage result means the SD card is not ready for logging.
 
-The serial monitor also prints the result of each test and the final failure mask. A missing GPS signal or SD problem is therefore visible before the motorcycle goes on track.
-
-During normal operation, the onboard LED is off while idle and gives a short green flash approximately once per second while a session is actively recording. Wait for recording to stop and the flashing to end before removing power whenever possible.
-
-
-For each test:
-
-- Green flashes indicate a pass.
-- Red flashes indicate a failure.
-- The number of flashes identifies the test.
-- Five blue flashes indicate that the complete diagnostic sequence has finished.
-
-The serial monitor also prints the result of each test and the final failure mask. A missing GPS signal or SD problem is therefore visible before the motorcycle goes on track.
-
-During normal operation, the onboard LED is off while idle and gives a short green flash approximately once per second while a session is actively recording. Wait for recording to stop and the flashing to end before removing power whenever possible.
-
-## Automatic logging
+## Automatic and manual logging
 
 Default settings:
 
@@ -126,75 +104,31 @@ Stop threshold:   3 km/h
 Stop delay:       60 seconds
 ```
 
-The start speed and stop delay can be changed from the web interface. The permitted ranges are:
+The web control page can set the start speed from 1–100 km/h and stop delay from 1–600 seconds. The 3 km/h stop threshold is fixed. Settings survive a reboot and cannot be changed while recording.
 
-| Setting | Range |
-|---|---:|
-| Start speed | 1–100 km/h |
-| Stop delay | 1–600 seconds |
-| Stop threshold | Fixed at 3 km/h |
+Automatic logging requires valid live GPS data. Manual start also requires a valid GPS fix and ready storage. A manually started session continues until **Stop Logging** is pressed. Following manual stop, automatic restart is inhibited until speed falls below the configured start threshold.
 
-Settings are stored in ESP32 Preferences and survive a reboot. They cannot be changed while a session is recording.
+## Session integrity and power-loss recovery
 
-Automatic operation:
-
-1. RaceSync waits for valid live GPS data.
-2. Recording starts once speed reaches the configured start speed.
-3. GPS and the most recent RPM value are written to the VBO at each GPS sample.
-4. When speed remains at or below 3 km/h for the configured delay, RaceSync flushes and closes the VBO and KML files.
-5. The session becomes available through the onboard web interface.
-
-## Web interface
-
-Connect to the RaceSync access point:
-
-```text
-SSID:     RaceSync
-Password: racesync
-IP:       192.168.4.1
-```
-
-The VBO is the only file written during recording. KML is produced from it on demand and is not stored on the microSD card.
-
-## Interrupted-session recovery
-
-RaceSync writes an active recording to a `.part` file rather than publishing it immediately as a completed VBO:
+During recording, RaceSync writes only the primary VBO data path and uses an incomplete filename:
 
 ```text
 While recording: RS_2026-09-02_10-32-15.part
 After clean stop: RS_2026-09-02_10-32-15.vbo
-
-1. RaceSync waits for valid live GPS data.
-2. Recording starts once speed reaches the configured start speed.
-3. GPS and the most recent RPM value are written to the VBO at each GPS sample.
-4. When speed remains at or below 3 km/h for the configured delay, RaceSync flushes and closes the VBO and KML files.
-5. The session becomes available through the onboard web interface.
-
-## Web interface
-
-Connect to the RaceSync access point:
-
-```text
-SSID:     RaceSync
-Password: racesync
-IP:       192.168.4.1
 ```
 
-On a normal stop, RaceSync flushes and closes the file, then renames it to `.vbo`. The session only appears in the web session list after this final rename.
+The active file is flushed every second. Logging will not start with less than 1 MB free and stops if space later falls below that limit. On a clean stop, RaceSync flushes and closes the file, renames it to `.vbo`, and verifies the rename before publishing it in the session list.
 
-If power is removed during recording, the `.part` file remains on the microSD card. At the next boot RaceSync:
+If power is lost, the `.part` file remains. On the next boot, after the SD health check passes, RaceSync:
 
-1. Completes the normal SD read/write health check.
-2. Finds files ending in `.part`.
-3. Copies only complete newline-terminated VBO records.
-4. Discards a potentially torn final row.
-5. Validates that the header, column names, data section and at least one data row exist.
-6. Closes the recovered output before publishing it as a VBO.
-7. Removes the original `.part` only after the recovered VBO exists.
+1. Finds incomplete `.part` sessions.
+2. Copies only newline-terminated records and discards a potentially torn final row.
+3. Requires a VBO header, column names, data section, and at least one complete data row.
+4. Publishes the recovered data as `.vbo` before removing the original `.part`.
 
-If the intended VBO filename already exists, RaceSync uses a `_RECOVERED_n.vbo` suffix. Files that fail validation are left as `.part` files for manual investigation instead of being deleted.
+If the intended VBO name already exists, `_RECOVERED_n.vbo` is used. A file that fails validation remains as `.part` for manual investigation. Recovery preserves complete records already written to the card; it cannot recover bytes that had not reached storage.
 
-Recovery results are available in `storage.recovery` from `GET /api/status`:
+Recovery results appear under `storage.recovery` in `GET /api/status`:
 
 ```json
 {
@@ -204,37 +138,39 @@ Recovery results are available in `storage.recovery` from `GET /api/status`:
 }
 ```
 
-This feature protects all complete records already committed to the card. It cannot preserve a row that was still inside the SD card or ESP32 buffer when power disappeared.
+## Web interface
+
+```text
+SSID:     RaceSync
+Password: racesync
+IP:       192.168.4.1
+```
 
 | Address | Purpose |
 |---|---|
-| `http://192.168.4.1/` | Stored sessions and downloads |
+| `http://192.168.4.1/` | Completed sessions, downloads and deletion |
 | `http://192.168.4.1/control` | Manual logging, automatic settings and reboot |
 | `http://192.168.4.1/status` | Full device status |
 
-| Address | Purpose |
-|---|---|
-| `http://192.168.4.1/` | Stored sessions and downloads |
-| `http://192.168.4.1/control` | Manual logging, automatic settings and reboot |
-| `http://192.168.4.1/status` | Full device status |
+The main page marks sessions as **NEW** using download history held in that browser. **Download All New** downloads each new VBO. A different browser or device has separate history.
 
-The control page provides:
+RaceSync does not write or retain a KML during a track session. **Generate KML** streams a KML directly from a completed VBO on demand, keeping the SD write path focused on the primary recording.
 
-RaceSync does not write KML during a track session. Selecting **Generate KML** in the web interface streams a KML download generated directly from the completed VBO. The generated KML is not stored on the microSD card, keeping the track-time write path focused exclusively on the primary VBO.
+Reboot and logging-setting changes are blocked while a session is active. Manual start is disabled until GPS and storage are ready, and the incomplete active `.part` file is never exposed in the completed-session list.
 
 ## REST API
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/status` | System, board, GPS, storage, logger and health diagnostics |
+| GET | `/api/status` | System, GPS, storage, logger and health diagnostics |
 | GET | `/api/location` | Current GPS location |
 | GET | `/api/telemetry` | Current GPS and sensor channels, including `channels.Revs` |
-| GET | `/api/sessions` | Stored session list |
+| GET | `/api/sessions` | Stored completed-session list |
 | GET | `/api/sessions/{id}` | Download a VBO session |
-| GET | `/api/session-kml?id={id}` | Download the matching KML |
-| DELETE | `/api/sessions/{id}` | Delete a stored session and companion KML |
+| GET | `/api/session-kml?id={id}` | Generate and download KML from a completed VBO |
+| DELETE | `/api/sessions/{id}` | Delete a completed session |
 | POST | `/api/logging/start` | Start a manual session |
-| POST | `/api/logging/stop` | Stop the active session |
+| POST | `/api/logging/stop` | Stop and finalize the active session |
 | GET | `/api/settings/logging` | Read automatic logging settings |
 | POST | `/api/settings/logging` | Save automatic logging settings |
 | POST | `/api/reboot` | Restart the ESP32 while idle |
@@ -248,53 +184,25 @@ Example logging-settings request:
 }
 ```
 
-The status response includes uptime, persistent boot count, reset reason, ESP32/PSRAM details, Wi-Fi state, GPS fix and packet diagnostics, storage self-test results, free space, active filename, sample count and logging thresholds.
+## VBO output
 
-## VBO and KML output
+VBO is the primary stored format. It contains position, speed, heading, altitude, sample timing, solution data, and available sensor channels. RPM is written to `Revs` for motorsport-analysis compatibility.
 
-The VBO is the primary motorsport data file. It contains GPS position, speed, heading, altitude, sample timing and the available sensor channels. Engine speed is written to the existing `Revs` channel for compatibility with motorsport analysis tools.
-
-RaceSync remains circuit-independent. Track recognition, start/finish detection, lap timing and analysis are performed afterwards in software such as Circuit Tools.
-
-A matching KML track is created for quick route viewing. KML is secondary to VBO logging; a KML failure should not prevent the primary recording.
-
-Typical session pair:
-
-```text
-RS_2026-09-02_10-32-15.vbo
-RS_2026-09-02_10-32-15.kml
-```
-
-The files are treated as one logical session. Deleting the session also deletes its companion KML when present.
-
-## Storage reliability
-
-RaceSync attempts to mount microSD at startup and runs a write, read-back and delete self-test. Detailed results are exposed through `/api/status`.
-
-Logging will not start unless storage is ready and writable with sufficient free space. The logger tracks write errors, periodically flushes data, refuses deletion of an active recording and closes both session files when recording stops.
-
-
-RaceSync attempts to mount microSD at startup and runs a write, read-back and delete self-test. Detailed results are exposed through `/api/status`.
-
-Logging will not start unless storage is ready and writable with sufficient free space. The logger tracks write errors, periodically flushes data, refuses deletion of an active recording and closes both session files when recording stops.
-
-LittleFS can act as fallback storage, but microSD is the intended storage for normal track use.
+RaceSync remains circuit-independent. Circuit recognition, start/finish detection, and lap analysis happen afterwards in software such as Circuit Tools.
 
 ## Firmware structure
 
 ```text
 src/
-├── api/        REST API and onboard web interface
+├── api/        REST API, KML streaming and onboard web interface
 ├── app/        startup diagnostics and application controller
 ├── config/     configuration and telemetry types
 ├── gps/        MG-902/u-blox interface and parser
-├── logging/    VBO/KML logger and SD/LittleFS storage
+├── logging/    VBO logger, recovery and SD storage
 ├── sensors/    ECU RPM capture and future sensors
 ├── wifi/       RaceSync access point
 └── main.cpp
 ```
-
-The GPS/logger path is the primary function. Web UI, Wi-Fi and diagnostics are supporting functions and must not interfere with reliable recording.
 
 ## Building and uploading
 
@@ -304,25 +212,14 @@ platformio run --target upload
 platformio device monitor
 ```
 
-The current PlatformIO configuration targets `esp32-s3-devkitc-1` and uses COM4 for upload and monitoring. Change `upload_port` and `monitor_port` in `platformio.ini` if Windows assigns another port.
+The PlatformIO target is `esp32-s3-devkitc-1`. The repository currently specifies COM4; change `upload_port` and `monitor_port` in `platformio.ini` if Windows assigns another port.
 
-## RPM bench-test checklist
+## Pre-track checks
 
-Before connecting to the motorcycle:
-
-1. Confirm the optocoupler logic output is 3.3 V, not 12 V.
-2. Confirm GPIO4 is not connected directly to the ECU.
-3. Build and upload the RPM feature firmware.
-4. Open `/api/telemetry` and confirm `channels.Revs` is zero without pulses.
-5. Apply a safe simulated pulse signal through the isolated interface.
-6. Confirm RPM rises, remains stable and returns to zero within approximately 500 ms after pulses stop.
-7. Compare the logged RPM with the motorcycle tachometer at idle and at several steady engine speeds.
-8. Open the resulting VBO and confirm the `Revs` channel contains plausible values.
-
-Do not merge or use the RPM feature on track until the pulse-per-revolution calibration has been confirmed.
-
-## Planned expansion
-
-The architecture supports future high-rate IMU, throttle position, brake pressure, lean/pitch/acceleration channels, configurable shift-light output and camera/video synchronisation without changing the basic rider workflow.
-
-The core principle remains: **automatically collect useful motorcycle data on track and make it easy to retrieve in the paddock.**
+1. Confirm SD-module 5 V power, common ground, and the documented SPI connections.
+2. Confirm the tachometer signal reaches GPIO4 only through the isolated interface.
+3. Confirm startup storage diagnostic 2 passes.
+4. Confirm GPS diagnostic 4 passes, then obtain a valid outdoor fix.
+5. Compare `/api/telemetry` `channels.Revs` against the motorcycle tachometer.
+6. Record a short test, stop normally, download the VBO, and inspect its `Revs` data.
+7. Perform a controlled interrupted-power test and confirm recovery through `/api/status` before relying on it at the circuit.
