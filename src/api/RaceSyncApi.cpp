@@ -1,6 +1,7 @@
 #include "RaceSyncApi.h"
 
 #include <ArduinoJson.h>
+#include "../../include/Pins.h"
 #include "../config/RaceSyncConfig.h"
 #include "esp_system.h"
 
@@ -236,6 +237,16 @@ void RaceSyncApi::handleTelemetry()
     channels["Revs"] = _telemetry.revs;
     channels["FuelPressure"] = _telemetry.fuelPressure;
     channels["ComboG"] = _telemetry.comboG;
+
+    JsonObject rpm = doc["rpm"].to<JsonObject>();
+    rpm["value"] = _telemetry.revs;
+    rpm["signalPresent"] = _telemetry.rpmSignalPresent;
+    rpm["pulseCount"] = _telemetry.rpmPulseCount;
+    rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX
+        ? -1
+        : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
+    rpm["inputPin"] = Pin::RPM_INPUT;
+    rpm["inputLevel"] = _telemetry.rpmInputLevel;
 
     String response; serializeJson(doc, response); sendJson(200, response);
 }
