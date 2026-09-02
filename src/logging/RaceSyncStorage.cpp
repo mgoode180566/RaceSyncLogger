@@ -199,8 +199,9 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         uint32_t id = sessionIdForFilename(filename);
         bool active = activeFilename.length() && filename == activeFilename;
         bool deletable = !active;
-        String kmlFilename = filename.substring(0, filename.length() - 4) + ".kml";
-        bool hasKml = fileExists(kmlFilename);
+        // Completed VBO sessions can always be converted to KML on demand.
+        // No persistent KML companion is written during recording.
+        bool kmlAvailable = !active;
 
         JsonObject session = sessions.add<JsonObject>();
         session["id"] = id;
@@ -211,8 +212,9 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         session["deletable"] = deletable;
         session["generatedByRaceSync"] = filename.startsWith("RS_");
         session["downloadUrl"] = "/api/sessions/" + String(id);
-        session["hasKml"] = hasKml;
-        if (hasKml) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id);
+        session["hasKml"] = kmlAvailable;
+        session["kmlGeneratedOnDemand"] = true;
+        if (kmlAvailable) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id);
         if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
     }
 }

@@ -34,9 +34,7 @@ private:
     bool _manualSession = false;
     bool _autoStartInhibit = false;
     File _file;
-    File _kmlFile;
     String _filename;
-    String _kmlFilename;
     uint32_t _sampleCount = 0;
     uint32_t _belowSpeedSince = 0;
     uint32_t _lastFlush = 0;
@@ -54,10 +52,7 @@ private:
     void stop();
     bool storageHasSafeFreeSpace();
     void writeHeader(File& file, DataMode mode);
-    void writeKmlHeader(File& file, const String& name);
-    void writeKmlFooter(File& file);
     void writeSample(const Telemetry& telemetry);
-    void writeKmlSample(const Telemetry& telemetry);
     String createFilename(const Telemetry& telemetry, DataMode mode) const;
     String createVBoxLine(const Telemetry& telemetry) const;
     void loadAutomaticSettings();

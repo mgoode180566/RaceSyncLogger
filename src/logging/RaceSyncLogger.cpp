@@ -69,27 +69,6 @@ void RaceSyncLogger::writeHeader(File& f, DataMode mode)
     f.println(); f.println("[data]");
 }
 
-void RaceSyncLogger::writeKmlHeader(File& f, const String& name)
-{
-    f.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-    f.println("<kml xmlns=\"http://www.opengis.net/kml/2.2\">");
-    f.println("<Document>");
-    f.print("<name>"); f.print(name); f.println("</name>");
-    f.println("<Style id=\"RaceSyncTrack\"><LineStyle><width>4</width></LineStyle></Style>");
-    f.println("<Placemark>");
-    f.println("<name>RaceSync GPS Track</name>");
-    f.println("<styleUrl>#RaceSyncTrack</styleUrl>");
-    f.println("<LineString><tessellate>1</tessellate><altitudeMode>absolute</altitudeMode><coordinates>");
-}
-
-void RaceSyncLogger::writeKmlFooter(File& f)
-{
-    f.println("</coordinates></LineString>");
-    f.println("</Placemark>");
-    f.println("</Document>");
-    f.println("</kml>");
-}
-
 String RaceSyncLogger::createVBoxLine(const Telemetry& t) const
 {
     char line[512];
@@ -125,24 +104,12 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     if (_storage->freeBytes() < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) { Serial.println("[LOGGER] Insufficient free storage - recording not started"); return false; }
 
     _filename=createFilename(t,mode);
-    _kmlFilename=_filename; _kmlFilename.replace(".vbo",".kml");
-
     _file=_storage->openWrite(_filename);
     if (!_file) { _writeErrors++; Serial.println("[LOGGER] Unable to create VBO session"); return false; }
 
-    _kmlFile=_storage->openFileWrite(_kmlFilename);
-    if (!_kmlFile) {
-        _writeErrors++;
-        _file.close();
-        _storage->removeFile(_filename);
-        Serial.println("[LOGGER] Unable to create companion KML; partial VBO removed");
-        return false;
-    }
-
-    writeHeader(_file,mode); writeKmlHeader(_kmlFile,_kmlFilename); _file.flush(); _kmlFile.flush();
+    writeHeader(_file,mode); _file.flush();
     _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false;
     Serial.printf("[LOGGER] Started: %s (%s)\n",_filename.c_str(), manual ? "MANUAL" : "AUTO");
-    Serial.printf("[LOGGER] KML: %s\n",_kmlFilename.c_str());
     return true;
 }
 
@@ -150,10 +117,8 @@ void RaceSyncLogger::stop()
 {
     if (!_recording) return;
     if (_file) { _file.flush(); _file.close(); }
-    if (_kmlFile) { writeKmlFooter(_kmlFile); _kmlFile.flush(); _kmlFile.close(); }
     _recording=false; _manualSession=false; _belowSpeedSince=0;
     Serial.printf("[LOGGER] Closed: %s samples=%u\n",_filename.c_str(),_sampleCount);
-    Serial.printf("[LOGGER] Closed KML: %s\n",_kmlFilename.c_str());
 }
 
 bool RaceSyncLogger::manualStart(const Telemetry& telemetry, DataMode mode)
@@ -177,23 +142,14 @@ bool RaceSyncLogger::manualStop()
 
 void RaceSyncLogger::forceStop() { stop(); }
 
-void RaceSyncLogger::writeKmlSample(const Telemetry& t)
-{
-    _kmlFile.print(t.longitude, 7); _kmlFile.print(',');
-    _kmlFile.print(t.latitude, 7); _kmlFile.print(',');
-    _kmlFile.println(t.height, 2);
-}
-
 void RaceSyncLogger::writeSample(const Telemetry& t)
 {
     if (!_recording) return;
     if (!storageHasSafeFreeSpace()) { stop(); return; }
     size_t vboWritten=_file.println(createVBoxLine(t));
     if (vboWritten==0) { _writeErrors++; Serial.println("[LOGGER] VBO write failed - closing session"); stop(); return; }
-    writeKmlSample(t);
-    if (!_kmlFile) { _writeErrors++; Serial.println("[LOGGER] KML write failed - closing session"); stop(); return; }
     _sampleCount++; _lastWriteMs=millis(); uint32_t now=millis();
-    if (now-_lastFlush >= RaceSyncConfig::LOG_FLUSH_INTERVAL_MS) { _file.flush(); _kmlFile.flush(); _lastFlush=now; }
+    if (now-_lastFlush >= RaceSyncConfig::LOG_FLUSH_INTERVAL_MS) { _file.flush(); _lastFlush=now; }
 }
 
 void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)

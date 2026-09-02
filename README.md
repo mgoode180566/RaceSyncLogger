@@ -8,27 +8,38 @@ For rider-focused instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 ## Current functionality
 
-- ESP32-S3 DevKitC-1 firmware built with PlatformIO and Arduino
-- MicoAir MG-902 / u-blox GPS at a target 25 Hz
-- Isolated ECU tachometer input with interrupt-based RPM capture
-- RPM stored in the VBO `Revs` channel
-- Automatic recording controlled by configurable start speed and stop delay
-- Persistent logging settings retained after reboot
-- Manual start and stop controls for bench testing
-- Safe software reboot control, disabled while recording
-- Startup self-tests with colour-coded LED results
-- Active-recording LED flash approximately once per second
-- Primary microSD storage with health checks and LittleFS fallback
-- Matching VBO and KML files for each session
-- VBO output for analysis in software such as Circuit Tools
-- Self-contained Wi-Fi access point and onboard web interface
-- Session list, NEW/downloaded state, bulk download and deletion
-- Detailed REST status, telemetry, settings and session APIs
-- Persistent boot count and reset-reason diagnostics
+- ESP32-S3 standalone logger
+- MicoAir MG-902 / u-blox GPS at 25 Hz
+- Engine RPM capture from the isolated ECU tachometer output
+- Automatic start/stop recording based on motorcycle speed
+- microSD session storage with LittleFS fallback
+- KML files generated on demand from completed VBO sessions
+- VBO output for motorsport analysis such as Circuit Tools
+- KML output for GPS route viewing
+- Onboard LED flashes while actively recording
+- Self-contained RaceSync Wi-Fi access point
+- Onboard web session manager at `192.168.4.1`
+- Stored-session list
+- Browser-based NEW/downloaded session indication
+- Download All New VBO sessions
+- Individual VBO and KML downloads
+- Session deletion, including the companion KML
+- REST status, telemetry and session API
+- Demo mode for bench testing
 
-## Hardware connections
+## Normal workflow
 
-### GPS
+1. Power RaceSync and allow the GPS to obtain a fix.
+2. Ride onto the circuit. RaceSync starts automatically when the configured start speed is exceeded.
+3. The onboard LED flashes approximately once per second while recording.
+4. Complete the session normally; no interaction with RaceSync is required.
+5. Return to the paddock and allow RaceSync to stop and close the recording automatically.
+6. Connect a phone, tablet or laptop to the `RaceSync` Wi-Fi network.
+7. Browse to `http://192.168.4.1`.
+8. Download new sessions, individual VBO/KML files, or delete sessions no longer required.
+9. Open the VBO in compatible motorsport analysis software such as Circuit Tools.
+
+Current thresholds:
 
 ```text
 MG-902 TX -> ESP32 GPIO16 (GPS RX)
@@ -130,7 +141,7 @@ Password: racesync
 IP:       192.168.4.1
 ```
 
-Available pages:
+The VBO is the only file written during recording. KML is produced from it on demand and is not stored on the microSD card.
 
 | Address | Purpose |
 |---|---|
@@ -140,15 +151,7 @@ Available pages:
 
 The control page provides:
 
-- Manual start, requiring valid GPS and ready storage
-- Manual stop
-- Configurable automatic start speed
-- Configurable stationary stop delay
-- ESP32 software reboot without disconnecting motorcycle power
-
-A manually started session continues until **Stop Logging** is pressed. Reboot and settings changes are blocked while recording so an active session cannot be interrupted accidentally.
-
-The session page lists newest sessions first. Each browser records which session IDs it has downloaded, marks unseen recordings as **NEW**, and can download all new VBO files. Individual VBO/KML downloads and session deletion are also available.
+RaceSync does not write KML during a track session. Selecting **Generate KML** in the web interface streams a KML download generated directly from the completed VBO. The generated KML is not stored on the microSD card, keeping the track-time write path focused exclusively on the primary VBO.
 
 ## REST API
 
