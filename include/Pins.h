@@ -10,6 +10,10 @@ namespace Pin
 
     constexpr int TPS_ADC = 1;
 
+    // Isolated ECU tachometer input. Connect only through the 12 V
+    // optocoupler/interface; never connect the ECU signal directly.
+    constexpr int RPM_INPUT = 4;
+
     constexpr int SD_CS = 10;
     constexpr int SD_SCK = 12;
     constexpr int SD_MISO = 13;

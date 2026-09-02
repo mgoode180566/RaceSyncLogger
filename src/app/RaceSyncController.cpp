@@ -264,7 +264,7 @@ void RaceSyncController::update()
         newSample = true;
     }
 
-    _sensors.update();
+    // Sample RPM continuously; the most recent value is attached to each GPS sample.\n    _sensors.update(_telemetry);
 
     if (newSample)
     {
