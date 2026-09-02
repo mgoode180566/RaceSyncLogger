@@ -35,6 +35,7 @@ private:
     bool _autoStartInhibit = false;
     File _file;
     String _filename;
+    String _partFilename;
     uint32_t _sampleCount = 0;
     uint32_t _belowSpeedSince = 0;
     uint32_t _lastFlush = 0;
@@ -49,7 +50,7 @@ private:
     uint32_t _stopDelayMs = 60000;
 
     bool start(const Telemetry& telemetry, DataMode mode, bool manual = false);
-    void stop();
+    void stop(bool finalize = true);
     bool storageHasSafeFreeSpace();
     void writeHeader(File& file, DataMode mode);
     void writeSample(const Telemetry& telemetry);
