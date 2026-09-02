@@ -9,7 +9,8 @@ For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 ## Current functionality
 
 - ESP32-S3 standalone logger
-- MicoAir MG-902 / u-blox GPS at 25 Hz\n- Engine RPM capture from the isolated ECU tachometer output
+- MicoAir MG-902 / u-blox GPS at 25 Hz
+- Engine RPM capture from the isolated ECU tachometer output
 - Automatic start/stop recording based on motorcycle speed
 - microSD session storage with LittleFS fallback
 - Matching VBO and KML files for each RaceSync session
@@ -78,6 +79,23 @@ MG-902 RX -> ESP32 GPIO17 (TX)
 ```
 
 The logging target is **25 Hz**, approximately one GPS sample every 40 ms.
+
+## Engine RPM
+
+RaceSync captures the CB500 ECU tachometer output on ESP32 GPIO4 and writes the calculated value to the VBO `Revs` channel. The live value is also available as `channels.Revs` from `GET /api/telemetry`.
+
+The motorcycle's nominal 12 V tachometer wire must never be connected directly to the ESP32. Use the 12 V optocoupler isolation module, configured for a 3.3 V logic output:
+
+```text
+CB500 ECU tach output -> optocoupler 12 V input
+Optocoupler OUT       -> ESP32 GPIO4
+Optocoupler logic VCC -> ESP32 3V3
+Optocoupler logic GND -> ESP32 GND
+```
+
+The default calibration is one falling edge per crankshaft revolution. Confirm this against a known tachometer reading before track use. If the logged RPM is exactly half or double the displayed RPM, change `RPM_PULSES_PER_REVOLUTION` in `src/sensors/RaceSyncSensors.h`.
+
+The capture rejects pulses closer than 1.5 ms, reports zero after 500 ms without a valid pulse, and applies light smoothing to reduce optocoupler jitter.
 
 ## Storage
 
