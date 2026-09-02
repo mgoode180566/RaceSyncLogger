@@ -49,6 +49,10 @@ struct Telemetry
     double oilTemperature = 0.0;
     double waterTemperature = 0.0;
     double revs = 0.0;
+    bool rpmSignalPresent = false;
+    uint32_t rpmPulseCount = 0;
+    uint32_t rpmLastPulseAgeMs = UINT32_MAX;
+    uint8_t rpmInputLevel = HIGH;
     double fuelPressure = 0.0;
     double comboG = 0.0;
 

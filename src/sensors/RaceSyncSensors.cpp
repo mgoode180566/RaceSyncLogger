@@ -43,10 +43,12 @@ void RaceSyncSensors::update(Telemetry& telemetry)
 {
     uint32_t lastPulseUs;
     uint32_t periodUs;
+    uint32_t pulseCount;
 
     portENTER_CRITICAL(&_rpmMux);
     lastPulseUs = _rpmLastPulseUs;
     periodUs = _rpmPeriodUs;
+    pulseCount = _rpmPulseCount;
     portEXIT_CRITICAL(&_rpmMux);
 
     const uint32_t nowUs = micros();
@@ -82,6 +84,10 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     }
 
     telemetry.revs = _rpm;
+    telemetry.rpmSignalPresent = _rpmSignalPresent;
+    telemetry.rpmPulseCount = pulseCount;
+    telemetry.rpmLastPulseAgeMs = _rpmLastPulseAgeMs;
+    telemetry.rpmInputLevel = digitalRead(Pin::RPM_INPUT) == HIGH ? HIGH : LOW;
 }
 
 double RaceSyncSensors::rpm() const
