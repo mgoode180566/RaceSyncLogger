@@ -1,209 +1,171 @@
 # RaceSync Data Logger — User Guide
 
-## Overview
+## What RaceSync does
 
-RaceSync is a compact motorcycle data logger designed to record track and race sessions automatically without requiring the rider to operate controls while riding.
+RaceSync records GPS and engine RPM automatically while the motorcycle is moving. It saves each completed ride as a VBO file on microSD. In the paddock, connect a phone, tablet or laptop directly to RaceSync to download the recording or generate a KML route.
 
-Once powered, RaceSync acquires GPS, detects when the motorcycle begins moving, records the session to microSD and saves files ready for analysis. Back in the paddock, the rider connects directly to RaceSync over Wi-Fi and uses the built-in web interface to download or manage the recordings.
+Normal use is: **power it on, check it, ride, wait for it to stop, then download the session.** No controls are needed while riding.
 
-The normal intention is simple: **power it on, ride, download your sessions afterwards.**
+## Before first use
 
-## Startup diagnostics
+- Fit a FAT32-formatted microSD card.
+- Power the tested SD reader/writer from 5 V and ensure it shares ground with the ESP32.
+- Mount the GPS antenna with a clear upward view, away from metal shielding where practical.
+- Confirm the ECU tachometer connection is isolated; the 12 V motorcycle signal must never connect directly to the ESP32.
+- Set the desired start speed and stop delay on the web control page.
 
-Every time RaceSync is powered on it performs a startup diagnostic check before normal operation begins.
+## Startup lights
 
-While the checks are running, the onboard RGB LED remains **solid red**. RaceSync checks the main subsystems used for logging, including Wi-Fi, storage/microSD, logger initialisation, GPS communications and the sensor subsystem.
+The LED is solid red when startup diagnostics begin. RaceSync then signals five checks. The number of flashes identifies the check; green flashes mean pass and red flashes mean fail.
 
-The GPS diagnostic checks that the receiver is actually communicating with RaceSync. A GPS position fix is not required for this startup test, so starting the unit indoors or before the receiver has a clear view of the sky should not by itself cause a GPS failure code.
+| Flashes | Check |
+|---:|---|
+| 1 | RaceSync Wi-Fi |
+| 2 | microSD card and storage health |
+| 3 | logger initialization |
+| 4 | GPS receiver communications |
+| 5 | sensor subsystem, including RPM input |
 
-If all startup checks pass, RaceSync confirms this with **five green flashes**. After the fifth green flash the LED returns to normal operating behaviour and the logger is ready for use.
+Five blue flashes mean the full diagnostic sequence has finished.
 
-If one or more checks fail, RaceSync displays a coded sequence of **red flashes**:
+The GPS check confirms that valid receiver packets arrive within five seconds. It does not require a satellite position fix. You may therefore see a green GPS diagnostic while the web page still says **GPS WAITING** indoors.
 
-```text
-1 red flash   = Wi-Fi failure
-2 red flashes = microSD / storage failure
-3 red flashes = logger initialisation failure
-4 red flashes = GPS communications failure
-5 red flashes = sensor subsystem failure
-```
+Do not rely on the logger for a track session if check 2 is red. Review any other red result through the Status page or serial monitor before riding.
 
-A failure code is repeated three times to make it easier to count. If more than one subsystem has failed, RaceSync displays each code in turn with a longer pause between codes.
+## Starting a track session
 
-For example:
+1. Power RaceSync.
+2. Let all five startup checks and the final five blue flashes complete.
+3. Give the GPS antenna a clear view of the sky.
+4. If desired, connect to RaceSync and confirm **GPS READY** and **STORAGE READY**.
+5. Ride away normally.
 
-```text
-flash flash   pause   flash flash   pause   flash flash
-```
+Automatic recording starts when valid GPS speed reaches the configured start speed. The default is 10 km/h.
 
-repeated three times indicates **code 2 — storage/microSD failure**.
+While recording, the onboard LED gives a short green flash approximately once per second. RaceSync continues through slow corners and brief stops.
 
-If RaceSync detects an SD-card fault but is able to fall back to internal storage, the SD/storage diagnostic is still reported as a failure. This is intentional: for normal track use the rider should know that the microSD card is not operating correctly before going onto the circuit.
+## Ending a track session
 
-After showing any failure codes RaceSync continues booting so that the Wi-Fi/web interface and serial diagnostics remain available where possible. A red diagnostic code should therefore be investigated before relying on the logger for a track session.
+Return to the paddock and remain at or below 3 km/h for the configured stop delay. The default delay is 60 seconds.
 
-## What RaceSync records
+When the delay expires, RaceSync flushes and closes the recording and changes it from an incomplete `.part` file into a completed `.vbo` session. The recording LED then stops flashing.
 
-RaceSync uses a high-speed GPS receiver operating at up to **25 samples per second**. A session records GPS position, speed, direction, altitude, satellite/fix information and accurate sample timing.
+Wait for the flashing to stop before switching off whenever possible.
 
-RaceSync is designed to accept additional motorcycle channels as the system develops, including engine RPM and IMU data.
+## Connecting to RaceSync
 
-Each completed RaceSync session normally produces two files:
-
-```text
-RS_20260829_103215.vbo
-RS_20260829_103215.kml
-```
-
-The files belong to the same riding session.
-
-## Automatic recording
-
-RaceSync does not require a start/stop button.
-
-With a valid GPS signal, the logger waits for the motorcycle to move. Recording begins automatically when the configured start speed is exceeded. It continues through the riding session, including slow corners and brief stops.
-
-After the motorcycle has remained below the stopping threshold for the configured period, RaceSync safely closes the session.
-
-Current settings are:
-
-```text
-Start recording: 10 km/h
-Stop threshold:   3 km/h
-Stop delay:       60 seconds
-```
-
-This allows the rider to leave the paddock, complete the track session and return without interacting with the logger.
-
-## Recording indicator
-
-The onboard RaceSync LED provides a simple indication of recording status.
-
-While a session is actively being recorded, the LED gives a short flash approximately **once per second**. When RaceSync is idle, the logging indication is off.
-
-This allows recording to be confirmed without fitting a screen to the motorcycle.
-
-## GPS operation
-
-RaceSync uses a high-rate GPS receiver capable of **25 Hz** position logging.
-
-After power-up the GPS needs a sufficiently clear view of the sky to obtain a position fix. The antenna should ideally have a clear upward view and should not be hidden beneath metal bodywork.
-
-Once GPS is ready, normal recording is automatic.
-
-## Session storage
-
-Sessions are stored on the RaceSync **microSD card**. The card can hold many recordings, so sessions do not need to be removed after every outing.
-
-The VBO and KML files with the same base filename are treated as one RaceSync session. When a session is deleted through the RaceSync interface, the VBO and its matching KML are removed together when both are present.
-
-## VBO files
-
-The `.vbo` file is the main motorsport data file. It is intended for compatible motorsport analysis software such as **Circuit Tools**.
-
-The recorded data can be used for analysis such as lap times, speed around the circuit, braking and acceleration areas, racing line and GPS position. Additional channels such as RPM and IMU information can be included as those sensors are added to RaceSync.
-
-RaceSync does not need the rider to select a circuit before riding. The logger records the session and the analysis software performs circuit/lap analysis afterwards.
-
-## KML files
-
-A `.kml` GPS track is created alongside each normal RaceSync VBO recording.
-
-The KML provides a quick visual representation of the route and can be opened in compatible mapping software such as **Google Earth**.
-
-## Connecting in the paddock
-
-RaceSync creates its own Wi-Fi network. It does not require mobile data, internet access or circuit Wi-Fi.
-
-Default connection details are:
+RaceSync creates its own Wi-Fi network. It does not need mobile data, internet access or circuit Wi-Fi.
 
 ```text
 Wi-Fi:    RaceSync
 Password: racesync
-Address:  192.168.4.1
+Address:  http://192.168.4.1
 ```
 
-After returning to the paddock:
+After connecting, open `http://192.168.4.1` in a browser.
 
-1. Leave RaceSync powered on.
-2. Connect your phone, tablet or laptop to the **RaceSync** Wi-Fi network.
-3. Open a web browser.
-4. Enter `http://192.168.4.1`.
-5. The RaceSync session manager appears.
+| Page | Use |
+|---|---|
+| Sessions `/` | Download, generate KML, or delete completed sessions |
+| Control `/control` | Manual logging, automatic settings, and reboot |
+| Status `/status` | Detailed GPS, storage, logger, and recovery information |
 
-## RaceSync session manager
+## Downloading sessions
 
-The web interface is built into RaceSync itself. Nothing needs to be installed on the phone or computer.
+The Sessions page lists completed VBO recordings newest first.
 
-The main screen shows the status of RaceSync and the sessions currently stored on the logger. It is designed primarily for quickly getting the latest recordings off the motorcycle after a track session.
+- **Download VBO** downloads the primary motorsport data file.
+- **Generate KML** creates a route from the completed VBO and downloads it immediately.
+- **Download All New** downloads all VBO files not previously downloaded by this browser.
+- **Delete** removes a completed session from the card after confirmation.
 
-For each stored session the interface provides the appropriate actions:
+The **NEW** marker is remembered by the browser, not by RaceSync. The same session may appear new again on another phone, computer or browser.
 
-- **Download VBO** — download the main motorsport data file.
-- **Download KML** — download the GPS track when one exists.
-- **Delete** — remove the stored session from RaceSync.
+RaceSync does not save KML files during recording. A KML is generated only when requested and is not stored on the microSD card.
 
-The interface also displays storage information so the available space can be checked before further riding.
+## Using the VBO file
 
-## New sessions
+VBO is the main RaceSync data file. It contains GPS position, speed, heading, altitude, timing, and available sensor channels. Engine RPM is recorded in the `Revs` channel.
 
-The RaceSync web interface highlights sessions that have not previously been downloaded using the current browser as **NEW**.
+Open the VBO in compatible motorsport analysis software such as Circuit Tools. RaceSync does not need a circuit selected before riding; circuit recognition, start/finish detection, and lap analysis happen afterwards.
 
-This makes it easy to identify the sessions just recorded rather than having to remember filenames.
+## Changing automatic logging settings
 
-The **Download All New** function downloads the new VBO sessions in one operation. After a successful download, the browser remembers the session ID and no longer marks that session as NEW.
+Open `http://192.168.4.1/control` while RaceSync is idle.
 
-This download history is stored in the browser, not on the motorcycle. Consequently, connecting with a different laptop, phone or browser creates a separate download history and may show the stored sessions as new again.
+| Setting | Default | Allowed range |
+|---|---:|---:|
+| Start recording speed | 10 km/h | 1–100 km/h |
+| Stop delay | 60 seconds | 1–600 seconds |
+| Stop threshold | 3 km/h | Fixed |
 
-## Deleting sessions
+Choose the values and press **Save Logging Settings**. They remain saved after power-off or reboot. Settings cannot be changed during recording.
 
-A session can be removed using its **Delete** control. RaceSync asks for confirmation before deletion.
+## Manual recording
 
-Deleting a normal completed session removes the VBO and its companion KML when present. RaceSync protects files that should not be removed, such as an active recording.
+The Control page provides **Start Manual Logging** and **Stop Logging**.
 
-Deleting old sessions is useful for keeping the SD card tidy, but it is not necessary to delete a recording immediately after downloading it.
+Manual start is available only when GPS has a valid fix and storage is ready. A manually started recording ignores the automatic stop delay and continues until **Stop Logging** is pressed.
 
-## Typical track-day workflow
+After a manual stop, automatic recording will not immediately start again while the motorcycle is above the configured start speed. It is re-enabled after speed falls below that threshold.
 
-1. Power the motorcycle and RaceSync.
-2. Watch the startup LED diagnostics.
-3. Confirm that RaceSync finishes with **five green flashes**.
-4. Allow the GPS to obtain a position fix if it has not already done so.
-5. Ride out of the paddock.
-6. RaceSync starts recording automatically.
-7. Confirm the recording LED is flashing if it is visible.
-8. Complete the track session normally.
-9. Return to the paddock.
-10. Allow RaceSync to stop and close the recording.
-11. Connect your laptop, tablet or phone to RaceSync Wi-Fi.
-12. Open `192.168.4.1`.
-13. Look for the **NEW** session.
-14. Use **Download VBO**, **Download KML**, or **Download All New**.
-15. Open the downloaded VBO in your motorsport analysis software.
-16. Delete old sessions from RaceSync when no longer required on the logger.
+## Rebooting RaceSync
 
-No interaction with RaceSync should be necessary while riding.
+Use **Reboot RaceSync** on the Control page only while the logger is idle. The control is disabled during recording. Wi-Fi disappears briefly; reconnect when the `RaceSync` network returns.
 
-## Powering off
+## Unexpected loss of power
 
-For the safest recording, allow RaceSync to finish the session before removing power.
+RaceSync writes an active session as `.part` and flushes it every second. If power is removed during recording, that incomplete file remains on the card.
 
-Once the motorcycle has stopped for the configured period and the recording indicator has stopped flashing, the session should have been closed normally.
+At the next boot, after the SD health test passes, RaceSync automatically checks `.part` files. It keeps complete VBO rows, discards a possibly incomplete last row, validates the recovered session, and publishes it as a VBO. If that name already exists, the recovered filename includes `_RECOVERED_1`, `_RECOVERED_2`, and so on.
 
-RaceSync periodically writes data to storage during recording to reduce the amount of data at risk if power is unexpectedly removed, but normal shutdown after the session remains preferable.
+An invalid or empty interrupted recording remains as `.part` for investigation rather than being silently deleted. Such files do not appear in the normal completed-session list.
 
-## Using RaceSync at different circuits
+Open the Status page and look at `storage.recovery` to see how many files were recovered or failed and the last recovered filename.
 
-RaceSync is not tied to a particular circuit and there is no circuit selection required before riding.
+Recovery greatly reduces data loss, but it cannot restore a sample that had not reached the microSD card when power disappeared. A normal stop remains safest.
 
-The same unit can therefore be used at different tracks without changing the logger setup. RaceSync records the GPS/vehicle data and compatible analysis software handles circuit recognition and lap analysis afterwards.
+## Storage safeguards
 
-## What the rider needs to do
+At every boot, RaceSync mounts the microSD card and tests that it can create, read back, and delete a temporary file. Logging is unavailable if that test fails.
 
-**Before riding:** Power RaceSync, watch the startup diagnostics and confirm **five green flashes**. Then confirm that GPS is ready.
+RaceSync will not start a session with less than 1 MB free. It also checks free space during recording and closes the session if remaining space becomes too low.
 
-**While riding:** Nothing. RaceSync automatically handles recording.
+The active recording cannot be deleted through the web interface. Completed sessions appear only after the active `.part` file has been closed and successfully renamed to `.vbo`.
 
-**After riding:** Allow the session to finish, connect to RaceSync Wi-Fi, open `192.168.4.1` and download the new recording.
+## Typical track-day checklist
 
-RaceSync is intended to provide useful motorsport data while remaining as unobtrusive as possible on the motorcycle.
+### Before going out
+
+1. Insert the FAT32 microSD card and power RaceSync.
+2. Watch all startup diagnostics; pay particular attention to storage check 2.
+3. Confirm the diagnostic sequence ends with five blue flashes.
+4. Obtain an outdoor GPS fix.
+5. If checking through the browser, confirm **GPS READY** and **STORAGE READY**.
+
+### On track
+
+1. Ride normally; no RaceSync interaction is required.
+2. If visible, confirm the short green recording flash repeats approximately once per second.
+
+### Back in the paddock
+
+1. Stay stopped until the recording light ends.
+2. Leave RaceSync powered while downloading.
+3. Join `RaceSync` Wi-Fi and open `192.168.4.1`.
+4. Download the new VBO and generate a KML only if wanted.
+5. Open the VBO in Circuit Tools or your preferred compatible software.
+6. Delete old sessions when they are no longer required on the logger.
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| Red check 2 | Card fitted, FAT32 format, SD-module 5 V supply, common ground, and SPI wiring |
+| Red check 4 | GPS power, TX/RX wiring, and valid receiver output |
+| GPS WAITING | Move outdoors and give the antenna a clear view of the sky |
+| Recording does not start | GPS fix, storage state, free space, and configured start speed |
+| RPM is zero | Optocoupler power, isolated output wiring to GPIO4, and ECU connection |
+| RPM is half or double | Pulse-per-revolution calibration needs adjustment before track use |
+| Session absent after power loss | Reboot with the card fitted, then check `storage.recovery` on Status |
+| Cannot change settings, reboot, or delete | Wait until the active recording has stopped |
