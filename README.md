@@ -14,6 +14,7 @@ For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 - Automatic start/stop recording based on motorcycle speed
 - microSD session storage with LittleFS fallback
 - KML files generated on demand from completed VBO sessions
+- Power-loss session recovery using validated `.part` files
 - VBO output for motorsport analysis such as Circuit Tools
 - KML output for GPS route viewing
 - Onboard LED flashes while actively recording
@@ -118,6 +119,41 @@ RS_20260829_103215.kml
 ```
 
 The VBO is the only file written during recording. KML is produced from it on demand and is not stored on the microSD card.
+
+## Interrupted-session recovery
+
+RaceSync writes an active recording to a `.part` file rather than publishing it immediately as a completed VBO:
+
+```text
+While recording: RS_2026-09-02_10-32-15.part
+After clean stop: RS_2026-09-02_10-32-15.vbo
+```
+
+On a normal stop, RaceSync flushes and closes the file, then renames it to `.vbo`. The session only appears in the web session list after this final rename.
+
+If power is removed during recording, the `.part` file remains on the microSD card. At the next boot RaceSync:
+
+1. Completes the normal SD read/write health check.
+2. Finds files ending in `.part`.
+3. Copies only complete newline-terminated VBO records.
+4. Discards a potentially torn final row.
+5. Validates that the header, column names, data section and at least one data row exist.
+6. Closes the recovered output before publishing it as a VBO.
+7. Removes the original `.part` only after the recovered VBO exists.
+
+If the intended VBO filename already exists, RaceSync uses a `_RECOVERED_n.vbo` suffix. Files that fail validation are left as `.part` files for manual investigation instead of being deleted.
+
+Recovery results are available in `storage.recovery` from `GET /api/status`:
+
+```json
+{
+  "recoveredPartFiles": 1,
+  "failedPartRecoveries": 0,
+  "lastRecoveredFilename": "RS_2026-09-02_10-32-15.vbo"
+}
+```
+
+This feature protects all complete records already committed to the card. It cannot preserve a row that was still inside the SD card or ESP32 buffer when power disappeared.
 
 ## VBO and KML
 
