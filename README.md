@@ -104,6 +104,18 @@ The serial monitor also prints the result of each test and the final failure mas
 
 During normal operation, the onboard LED is off while idle and gives a short green flash approximately once per second while a session is actively recording. Wait for recording to stop and the flashing to end before removing power whenever possible.
 
+
+For each test:
+
+- Green flashes indicate a pass.
+- Red flashes indicate a failure.
+- The number of flashes identifies the test.
+- Five blue flashes indicate that the complete diagnostic sequence has finished.
+
+The serial monitor also prints the result of each test and the final failure mask. A missing GPS signal or SD problem is therefore visible before the motorcycle goes on track.
+
+During normal operation, the onboard LED is off while idle and gives a short green flash approximately once per second while a session is actively recording. Wait for recording to stop and the flashing to end before removing power whenever possible.
+
 ## Automatic logging
 
 Default settings:
@@ -151,6 +163,21 @@ RaceSync writes an active recording to a `.part` file rather than publishing it 
 ```text
 While recording: RS_2026-09-02_10-32-15.part
 After clean stop: RS_2026-09-02_10-32-15.vbo
+
+1. RaceSync waits for valid live GPS data.
+2. Recording starts once speed reaches the configured start speed.
+3. GPS and the most recent RPM value are written to the VBO at each GPS sample.
+4. When speed remains at or below 3 km/h for the configured delay, RaceSync flushes and closes the VBO and KML files.
+5. The session becomes available through the onboard web interface.
+
+## Web interface
+
+Connect to the RaceSync access point:
+
+```text
+SSID:     RaceSync
+Password: racesync
+IP:       192.168.4.1
 ```
 
 On a normal stop, RaceSync flushes and closes the file, then renames it to `.vbo`. The session only appears in the web session list after this final rename.
@@ -178,6 +205,12 @@ Recovery results are available in `storage.recovery` from `GET /api/status`:
 ```
 
 This feature protects all complete records already committed to the card. It cannot preserve a row that was still inside the SD card or ESP32 buffer when power disappeared.
+
+| Address | Purpose |
+|---|---|
+| `http://192.168.4.1/` | Stored sessions and downloads |
+| `http://192.168.4.1/control` | Manual logging, automatic settings and reboot |
+| `http://192.168.4.1/status` | Full device status |
 
 | Address | Purpose |
 |---|---|
@@ -235,6 +268,11 @@ RS_2026-09-02_10-32-15.kml
 The files are treated as one logical session. Deleting the session also deletes its companion KML when present.
 
 ## Storage reliability
+
+RaceSync attempts to mount microSD at startup and runs a write, read-back and delete self-test. Detailed results are exposed through `/api/status`.
+
+Logging will not start unless storage is ready and writable with sufficient free space. The logger tracks write errors, periodically flushes data, refuses deletion of an active recording and closes both session files when recording stops.
+
 
 RaceSync attempts to mount microSD at startup and runs a write, read-back and delete self-test. Detailed results are exposed through `/api/status`.
 
