@@ -9,7 +9,7 @@ For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 ## Current functionality
 
 - ESP32-S3 standalone logger
-- MicoAir MG-902 / u-blox GPS at 25 Hz
+- MicoAir MG-902 / u-blox GPS at 25 Hz\n- Engine RPM capture from the isolated ECU tachometer output
 - Automatic start/stop recording based on motorcycle speed
 - microSD session storage with LittleFS fallback
 - Matching VBO and KML files for each RaceSync session
@@ -156,6 +156,6 @@ platformio device monitor
 
 ## Planned expansion
 
-The architecture supports future engine RPM, high-rate IMU, throttle position, brake pressure, lean/pitch/acceleration channels and camera/video synchronisation without changing the basic rider workflow.
+The architecture supports future high-rate IMU, throttle position, brake pressure, lean/pitch/acceleration channels and camera/video synchronisation without changing the basic rider workflow.
 
 The core principle remains: **automatically collect useful motorcycle data on track and make it easy to retrieve in the paddock.**
