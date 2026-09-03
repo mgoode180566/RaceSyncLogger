@@ -45,12 +45,18 @@ private:
     uint32_t _loggingLedCycleStartedMs = 0;
     bool _loggingLedOn = false;
 
+    uint32_t _lastRpmLedPulseCount = 0;
+    uint32_t _rpmLedUntilMs = 0;
+    bool _rpmLedOn = false;
+    static constexpr uint32_t RPM_LED_FLASH_MS = 60;
+
     void updateDataMode();
     void incrementBootCount();
 
     void setStatusLed(uint8_t red, uint8_t green, uint8_t blue);
     void updateLoggingLed();
     void setLoggingLed(bool on);
+    void updateRpmPulseLed();
 
     uint8_t runStartupDiagnostics();
     bool waitForGpsTraffic(uint32_t timeoutMs);

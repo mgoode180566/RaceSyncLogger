@@ -35,6 +35,9 @@ void RaceSyncController::setLoggingLed(bool on)
 
 void RaceSyncController::updateLoggingLed()
 {
+    // The RPM pulse indicator owns the RGB LED during its short blue flash.
+    if (_rpmLedOn) return;
+
     if (!_logger.recording())
     {
         if (_loggingLedOn) setLoggingLed(false);
@@ -61,6 +64,29 @@ void RaceSyncController::updateLoggingLed()
     else if (elapsed >= 100 && _loggingLedOn)
     {
         setLoggingLed(false);
+    }
+}
+
+void RaceSyncController::updateRpmPulseLed()
+{
+    const uint32_t now = millis();
+    const uint32_t pulseCount = _sensors.rpmPulseCount();
+
+    if (pulseCount != _lastRpmLedPulseCount)
+    {
+        _lastRpmLedPulseCount = pulseCount;
+        _rpmLedUntilMs = now + RPM_LED_FLASH_MS;
+        _rpmLedOn = true;
+        setStatusLed(0, 0, 48);
+        return;
+    }
+
+    if (_rpmLedOn && static_cast<int32_t>(now - _rpmLedUntilMs) >= 0)
+    {
+        _rpmLedOn = false;
+        setStatusLed(0, 0, 0);
+        _loggingLedOn = false;
+        _loggingLedCycleStartedMs = 0;
     }
 }
 
@@ -109,30 +135,19 @@ uint8_t RaceSyncController::runStartupDiagnostics()
     Serial.println("[DIAG] RaceSync startup diagnostics");
     Serial.println("[DIAG] =================================");
 
-    // Solid red indicates that startup diagnostics are in progress.
     setStatusLed(40, 0, 0);
 
     Serial.print("[DIAG] 1 Wi-Fi AP ............... ");
     const bool wifiOk = _wifi.begin();
-    if (wifiOk)
-    {
-        Serial.println("PASS");
-    }
-    else
-    {
-        Serial.println("FAIL");
-        failures |= (1U << (DIAG_WIFI - 1));
-    }
+    if (wifiOk) Serial.println("PASS");
+    else { Serial.println("FAIL"); failures |= (1U << (DIAG_WIFI - 1)); }
     flashDiagnosticResult(DIAG_WIFI, wifiOk);
 
     Serial.print("[DIAG] 2 microSD/storage ........ ");
     const bool storageMounted = _storage.begin();
     const bool storageHealthy = storageMounted && _storage.runHealthCheck();
     const bool sdOk = storageHealthy && _storage.usingSd();
-    if (sdOk)
-    {
-        Serial.println("PASS");
-    }
+    if (sdOk) Serial.println("PASS");
     else
     {
         Serial.print("FAIL");
@@ -145,15 +160,8 @@ uint8_t RaceSyncController::runStartupDiagnostics()
 
     Serial.print("[DIAG] 3 logger ................. ");
     const bool loggerOk = _logger.begin(_storage);
-    if (loggerOk)
-    {
-        Serial.println("PASS");
-    }
-    else
-    {
-        Serial.println("FAIL");
-        failures |= (1U << (DIAG_LOGGER - 1));
-    }
+    if (loggerOk) Serial.println("PASS");
+    else { Serial.println("FAIL"); failures |= (1U << (DIAG_LOGGER - 1)); }
     flashDiagnosticResult(DIAG_LOGGER, loggerOk);
 
     Serial.print("[DIAG] 4 GPS communications ..... ");
@@ -174,19 +182,11 @@ uint8_t RaceSyncController::runStartupDiagnostics()
 
     Serial.print("[DIAG] 5 sensor subsystem ....... ");
     const bool sensorsOk = _sensors.begin();
-    if (sensorsOk)
-    {
-        Serial.println("PASS");
-    }
-    else
-    {
-        Serial.println("FAIL");
-        failures |= (1U << (DIAG_SENSORS - 1));
-    }
+    if (sensorsOk) Serial.println("PASS");
+    else { Serial.println("FAIL"); failures |= (1U << (DIAG_SENSORS - 1)); }
     flashDiagnosticResult(DIAG_SENSORS, sensorsOk);
 
     Serial.println("[DIAG] =================================");
-
     return failures;
 }
 
@@ -219,11 +219,7 @@ void RaceSyncController::begin()
     incrementBootCount();
 
     const uint8_t diagnosticFailures = runStartupDiagnostics();
-
-    if (diagnosticFailures == 0)
-    {
-        Serial.println("[DIAG] ALL STARTUP DIAGNOSTICS PASSED");
-    }
+    if (diagnosticFailures == 0) Serial.println("[DIAG] ALL STARTUP DIAGNOSTICS PASSED");
     else
     {
         Serial.print("[DIAG] STARTUP DIAGNOSTICS COMPLETED WITH FAILURE MASK 0x");
@@ -241,6 +237,8 @@ void RaceSyncController::begin()
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
     _loggingLedCycleStartedMs = 0;
+    _lastRpmLedPulseCount = _sensors.rpmPulseCount();
+    _rpmLedOn = false;
 
     Serial.println("[MODE] Waiting for GPS...");
 }
@@ -264,7 +262,9 @@ void RaceSyncController::update()
         newSample = true;
     }
 
-    // Sample RPM continuously; the most recent value is attached to each GPS sample.\n    _sensors.update(_telemetry);
+    // Sample RPM continuously; the most recent value is attached to each GPS sample.
+    _sensors.update(_telemetry);
+    updateRpmPulseLed();
 
     if (newSample)
     {
