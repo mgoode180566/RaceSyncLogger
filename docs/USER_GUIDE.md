@@ -6,6 +6,8 @@ RaceSync records GPS and engine RPM automatically while the motorcycle is moving
 
 Normal use is: **power it on, check it, ride, wait for it to stop, then download the session.** No controls are needed while riding.
 
+This guide matches the repository's `main` branch. Throttle position, IMU and brake-pressure capture are not yet implemented; the current live sensor inputs are GPS and RPM.
+
 ## Before first use
 
 - Fit a FAT32-formatted microSD card.
@@ -28,6 +30,8 @@ The LED is solid red when startup diagnostics begin. RaceSync then signals five 
 
 Five blue flashes mean the full diagnostic sequence has finished.
 
+These completion flashes remain enabled even if you turn off the RPM blue LED. Sensor check 5 confirms RPM input setup, not that engine pulses are arriving.
+
 The GPS check confirms that valid receiver packets arrive within five seconds. It does not require a satellite position fix. You may therefore see a green GPS diagnostic while the web page still says **GPS WAITING** indoors.
 
 Do not rely on the logger for a track session if check 2 is red. Review any other red result through the Status page or serial monitor before riding.
@@ -42,7 +46,7 @@ Do not rely on the logger for a track session if check 2 is red. Review any othe
 
 Automatic recording starts when valid GPS speed reaches the configured start speed. The default is 10 km/h.
 
-While recording, the onboard LED gives a short green flash approximately once per second. RaceSync continues through slow corners and brief stops.
+While recording, the onboard LED gives a short green flash approximately once per second when the RPM blue indicator is disabled. If enabled, blue RPM activity takes priority and can hide the green flash. Confirm recording on the web page, not from blue activity alone. RaceSync continues through slow corners and brief stops.
 
 ## Ending a track session
 
@@ -50,7 +54,7 @@ Return to the paddock and remain at or below 3 km/h for the configured stop dela
 
 When the delay expires, RaceSync flushes and closes the recording and changes it from an incomplete `.part` file into a completed `.vbo` session. The recording LED then stops flashing.
 
-Wait for the flashing to stop before switching off whenever possible.
+Confirm the logger is idle before switching off whenever possible. Blue RPM activity can continue while the engine runs even after recording stops; it is not a recording indicator. If GPS data stops arriving, do not assume the automatic stop timer will close the file: check the Control page and use **Stop Logging** if needed.
 
 ## Connecting to RaceSync
 
@@ -68,7 +72,42 @@ After connecting, open `http://192.168.4.1` in a browser.
 |---|---|
 | Sessions `/` | Download, generate KML, or delete completed sessions |
 | Control `/control` | Manual logging, automatic settings, and reboot |
-| Status `/status` | Detailed GPS, storage, logger, and recovery information |
+| Status `/status` | Live RPM diagnostics and blue-LED option, plus GPS, storage, logger and recovery information |
+
+## Checking RPM and diagnosing dropouts
+
+Open **Full Device Status** at `http://192.168.4.1/status`. The **ENGINE SPEED** section updates approximately four times per second, independently of the slower full-status display. RPM also appears on the Sessions page, updated every five seconds.
+
+| RPM item | What it tells you |
+|---|---|
+| RPM | Current engine-speed reading |
+| Signal | `PRESENT` if an accepted pulse arrived within 500 ms; otherwise `NO SIGNAL` |
+| Accepted pulses | Running total of accepted falling edges since boot |
+| Rejected readings | Evaluated readings above 15,000 RPM since boot |
+| Last pulse | Time since the last accepted pulse, or `Never` if none has arrived |
+| GPIO4 level | Current sampled input state, HIGH or LOW |
+
+You can check these without GPS lock and without starting a recording. Two accepted pulses are needed to establish a period for the first RPM reading. The default calibration is **two pulses per crankshaft revolution**. Compare the reading with the bike's tachometer before relying on it; calibration changes currently require editing `RPM_PULSES_PER_REVOLUTION` in `src/sensors/RaceSyncSensors.h` and rebuilding.
+
+When investigating a zero reading:
+
+- If **Rejected readings** rises, the firmware evaluated an interval equivalent to over 15,000 RPM and replaced that reading with zero.
+- If **Last pulse** grows beyond 500 ms and the signal disappears, accepted pulses have stopped arriving.
+- The rejection counter does not include pulses filtered out for being closer than 1.5 ms, or signal timeouts. An unchanged counter does not rule out electrical noise.
+- GPIO4 HIGH/LOW is only a snapshot; a steady display cannot prove there are no pulses between refreshes.
+
+The counters reset on reboot. They are live diagnostics, not saved VBO channels, and RaceSync does not retain an RPM history while idle. Neither counter by itself identifies a faulty optocoupler.
+
+## Turning off the RPM blue LED
+
+1. Stop recording and open the Status page.
+2. Under **ENGINE SPEED**, uncheck **RPM blue LED**.
+3. Wait for the saved confirmation. There is no separate Save button.
+4. Check it again whenever you want RPM activity indication restored.
+
+The preference defaults to enabled and survives power-off and reboot. Changing it while recording is rejected; stop first and retry. It controls only the logger's onboard RPM indication, not the optocoupler's own LED. RPM capture, logging, green recording flashes and startup diagnostics remain enabled.
+
+With the option enabled, each newly observed pulse-count change extends a 60 ms blue indication. At engine speeds this may look solid blue rather than visibly flashing. For a clear green recording indicator on track, turn the RPM blue option off before riding.
 
 ## Downloading sessions
 
@@ -89,6 +128,8 @@ VBO is the main RaceSync data file. It contains GPS position, speed, heading, al
 
 Open the VBO in compatible motorsport analysis software such as Circuit Tools. RaceSync does not need a circuit selected before riding; circuit recognition, start/finish detection, and lap analysis happen afterwards.
 
+Other existing pressure, temperature and acceleration columns are placeholders, not measurements from connected sensors. Throttle opening is not currently recorded.
+
 ## Changing automatic logging settings
 
 Open `http://192.168.4.1/control` while RaceSync is idle.
@@ -106,6 +147,8 @@ Choose the values and press **Save Logging Settings**. They remain saved after p
 The Control page provides **Start Manual Logging** and **Stop Logging**.
 
 Manual start is available only when GPS has a valid fix and storage is ready. A manually started recording ignores the automatic stop delay and continues until **Stop Logging** is pressed.
+
+Storage errors or low free space can still stop it. Without valid new GPS samples, new VBO rows are not written even if the session remains open.
 
 After a manual stop, automatic recording will not immediately start again while the motorcycle is above the configured start speed. It is re-enabled after speed falls below that threshold.
 
@@ -125,6 +168,8 @@ Open the Status page and look at `storage.recovery` to see how many files were r
 
 Recovery greatly reduces data loss, but it cannot restore a sample that had not reached the microSD card when power disappeared. A normal stop remains safest.
 
+The recovery check looks for VBO sections and complete lines; it does not verify every numeric value. Inspect recovered data in your analysis software.
+
 ## Storage safeguards
 
 At every boot, RaceSync mounts the microSD card and tests that it can create, read back, and delete a temporary file. Logging is unavailable if that test fails.
@@ -142,15 +187,17 @@ The active recording cannot be deleted through the web interface. Completed sess
 3. Confirm the diagnostic sequence ends with five blue flashes.
 4. Obtain an outdoor GPS fix.
 5. If checking through the browser, confirm **GPS READY** and **STORAGE READY**.
+6. Check RPM against the motorcycle tachometer and look for unexpected rejection-count increases or signal loss.
+7. Turn off **RPM blue LED** while idle if you want to see the green recording flashes clearly.
 
 ### On track
 
 1. Ride normally; no RaceSync interaction is required.
-2. If visible, confirm the short green recording flash repeats approximately once per second.
+2. With RPM blue indication disabled, the short green recording flash repeats approximately once per second. Do not interact with the web interface while riding.
 
 ### Back in the paddock
 
-1. Stay stopped until the recording light ends.
+1. Stay stopped until the logger is idle; check the Control page if RPM blue activity obscures the recording light.
 2. Leave RaceSync powered while downloading.
 3. Join `RaceSync` Wi-Fi and open `192.168.4.1`.
 4. Download the new VBO and generate a KML only if wanted.
@@ -165,7 +212,11 @@ The active recording cannot be deleted through the web interface. Completed sess
 | Red check 4 | GPS power, TX/RX wiring, and valid receiver output |
 | GPS WAITING | Move outdoors and give the antenna a clear view of the sky |
 | Recording does not start | GPS fix, storage state, free space, and configured start speed |
-| RPM is zero | Optocoupler power, isolated output wiring to GPIO4, and ECU connection |
+| RPM is zero | Check accepted pulses, last-pulse age and rejected readings, then optocoupler power, isolated GPIO4 wiring and ECU connection |
 | RPM is half or double | Pulse-per-revolution calibration needs adjustment before track use |
+| Brief RPM dropouts | Compare changes in rejected readings with pulse age; over-range rejection and a 500 ms pulse timeout can both produce zero |
+| Blue LED stays on or hides green flashes | Normal with frequent accepted pulses; disable RPM blue LED while idle to see recording flashes |
+| Cannot change RPM blue LED | Stop recording, retry, and check for the saved confirmation |
 | Session absent after power loss | Reboot with the card fitted, then check `storage.recovery` on Status |
-| Cannot change settings, reboot, or delete | Wait until the active recording has stopped |
+| Cannot change settings or reboot | Wait until the active recording has stopped |
+| Cannot delete a session | The active recording is protected; for completed files check storage status and any reported error |
