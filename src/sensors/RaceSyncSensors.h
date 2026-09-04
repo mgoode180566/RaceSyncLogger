@@ -18,8 +18,8 @@ private:
     static void ARDUINO_ISR_ATTR handleRpmPulse();
 
     // Set this to match the isolated ECU tach output. The default assumes
-    // one falling edge per crankshaft revolution.
-    static constexpr float RPM_PULSES_PER_REVOLUTION = 1.0f;
+    // two falling edges per crankshaft revolution.
+    static constexpr float RPM_PULSES_PER_REVOLUTION = 2.0f;
     static constexpr uint32_t RPM_MIN_PULSE_INTERVAL_US = 1500;
     static constexpr uint32_t RPM_SIGNAL_TIMEOUT_US = 500000;
 
