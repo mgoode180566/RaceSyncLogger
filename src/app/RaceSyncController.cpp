@@ -12,6 +12,7 @@ void RaceSyncController::incrementBootCount()
     _preferences.begin("racesync", false);
     _bootCount = _preferences.getUInt("bootCount", 0) + 1;
     _preferences.putUInt("bootCount", _bootCount);
+    _telemetry.rpmLedEnabled = _preferences.getBool("rpmLedEnabled", true);
 }
 
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
@@ -71,6 +72,20 @@ void RaceSyncController::updateRpmPulseLed()
 {
     const uint32_t now = millis();
     const uint32_t pulseCount = _sensors.rpmPulseCount();
+
+    if (!_telemetry.rpmLedEnabled)
+    {
+        // Consume pulses while disabled, without affecting capture or logging.
+        _lastRpmLedPulseCount = pulseCount;
+        if (_rpmLedOn)
+        {
+            _rpmLedOn = false;
+            setStatusLed(0, 0, 0);
+            _loggingLedOn = false;
+            _loggingLedCycleStartedMs = 0;
+        }
+        return;
+    }
 
     if (pulseCount != _lastRpmLedPulseCount)
     {
