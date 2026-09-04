@@ -50,7 +50,9 @@ struct Telemetry
     double waterTemperature = 0.0;
     double revs = 0.0;
     bool rpmSignalPresent = false;
+    bool rpmLedEnabled = true;
     uint32_t rpmPulseCount = 0;
+    uint32_t rpmRejectedReadingCount = 0;
     uint32_t rpmLastPulseAgeMs = UINT32_MAX;
     uint8_t rpmInputLevel = HIGH;
     double fuelPressure = 0.0;

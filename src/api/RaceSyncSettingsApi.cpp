@@ -1,6 +1,7 @@
 #include "RaceSyncApi.h"
 
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <esp_system.h>
 
 void RaceSyncApi::beginSettingsRoutes()
@@ -59,6 +60,49 @@ void RaceSyncApi::beginSettingsRoutes()
         doc["startSpeedKmh"] = _logger.startSpeedKmh();
         doc["stopSpeedKmh"] = _logger.stopSpeedKmh();
         doc["stopDelaySeconds"] = _logger.stopDelaySeconds();
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+    });
+
+    _server.on("/api/settings/rpm-led", HTTP_POST, [this]()
+    {
+        if (_logger.recording())
+        {
+            sendJson(409, "{\"error\":\"Stop recording before changing the RPM LED setting\"}");
+            return;
+        }
+        JsonDocument input;
+        if (!_server.hasArg("plain") ||
+            deserializeJson(input, _server.arg("plain")) ||
+            !input["enabled"].is<bool>())
+        {
+            sendJson(400, "{\"error\":\"A JSON boolean enabled is required\"}");
+            return;
+        }
+
+        const bool enabled = input["enabled"].as<bool>();
+        if (enabled != _telemetry.rpmLedEnabled)
+        {
+            Preferences preferences;
+            if (!preferences.begin("racesync", false))
+            {
+                sendJson(500, "{\"error\":\"Unable to open settings storage\"}");
+                return;
+            }
+            const bool saved = preferences.putBool("rpmLedEnabled", enabled) != 0;
+            preferences.end();
+            if (!saved)
+            {
+                sendJson(500, "{\"error\":\"Unable to save RPM LED setting\"}");
+                return;
+            }
+            _telemetry.rpmLedEnabled = enabled;
+        }
+
+        JsonDocument doc;
+        doc["saved"] = true;
+        doc["enabled"] = _telemetry.rpmLedEnabled;
         String response;
         serializeJson(doc, response);
         sendJson(200, response);

@@ -240,8 +240,10 @@ void RaceSyncApi::handleTelemetry()
 
     JsonObject rpm = doc["rpm"].to<JsonObject>();
     rpm["value"] = _telemetry.revs;
+    rpm["ledEnabled"] = _telemetry.rpmLedEnabled;
     rpm["signalPresent"] = _telemetry.rpmSignalPresent;
     rpm["pulseCount"] = _telemetry.rpmPulseCount;
+    rpm["rejectedReadingCount"] = _telemetry.rpmRejectedReadingCount;
     rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX
         ? -1
         : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);

@@ -65,6 +65,11 @@ void RaceSyncSensors::update(Telemetry& telemetry)
         // Reject readings beyond the useful CB500 range.
         if (measuredRpm > 15000.0)
         {
+            if (pulseCount != _rpmLastEvaluatedPulseCount &&
+                _rpmRejectedReadingCount != UINT32_MAX)
+            {
+                ++_rpmRejectedReadingCount;
+            }
             measuredRpm = 0.0;
         }
     }
@@ -83,6 +88,8 @@ void RaceSyncSensors::update(Telemetry& telemetry)
         _rpm += 0.25 * (measuredRpm - _rpm);
     }
 
+    _rpmLastEvaluatedPulseCount = pulseCount;
+    telemetry.rpmRejectedReadingCount = _rpmRejectedReadingCount;
     telemetry.revs = _rpm;
     telemetry.rpmSignalPresent = _rpmSignalPresent;
     telemetry.rpmPulseCount = pulseCount;
