@@ -28,6 +28,9 @@ private:
     static volatile uint32_t _rpmPulseCount;
     static portMUX_TYPE _rpmMux;
 
+    // Count evaluated over-range intervals once, not once per main-loop pass.
+    uint32_t _rpmLastEvaluatedPulseCount = 0;
+    uint32_t _rpmRejectedReadingCount = 0;
     double _rpm = 0.0;
     uint32_t _rpmLastPulseAgeMs = UINT32_MAX;
     bool _rpmSignalPresent = false;
