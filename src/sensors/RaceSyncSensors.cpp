@@ -1,5 +1,6 @@
 #include "RaceSyncSensors.h"
 
+#include <Preferences.h>
 #include "../../include/Pins.h"
 
 volatile uint32_t RaceSyncSensors::_rpmLastPulseUs = 0;
@@ -36,16 +37,33 @@ void ARDUINO_ISR_ATTR RaceSyncSensors::handleRpmPulse()
 
 bool RaceSyncSensors::begin()
 {
+    Preferences preferences;
+    if (preferences.begin("racesync", true))
+    {
+        const double savedLimit = preferences.getDouble("rpmMaxValid", RPM_DEFAULT_MAX_VALID);
+        preferences.end();
+        if (savedLimit >= RPM_MIN_CONFIGURABLE_LIMIT && savedLimit <= RPM_MAX_CONFIGURABLE_LIMIT)
+            _rpmMaxValid = savedLimit;
+    }
+
     pinMode(Pin::RPM_INPUT, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(Pin::RPM_INPUT), handleRpmPulse, FALLING);
 
-    Serial.printf("[RPM] ECU tachometer capture ready on GPIO%d (%.2f pulse/rev)\n",
-                  Pin::RPM_INPUT, RPM_PULSES_PER_REVOLUTION);
+    Serial.printf("[RPM] ECU tachometer capture ready on GPIO%d (%.2f pulse/rev, max %.0f rpm)\n",
+                  Pin::RPM_INPUT, RPM_PULSES_PER_REVOLUTION, _rpmMaxValid);
     return true;
 }
 
 void RaceSyncSensors::update(Telemetry& telemetry)
 {
+    if (telemetry.rpmMaxValid >= RPM_MIN_CONFIGURABLE_LIMIT &&
+        telemetry.rpmMaxValid <= RPM_MAX_CONFIGURABLE_LIMIT &&
+        telemetry.rpmMaxValid != _rpmMaxValid)
+    {
+        _rpmMaxValid = telemetry.rpmMaxValid;
+    }
+    telemetry.rpmMaxValid = _rpmMaxValid;
+
     uint32_t lastPulseUs;
     uint32_t periodUs;
     uint32_t pulseCount;
@@ -74,7 +92,7 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     const bool newAcceptedPulse = pulseCount != _rpmLastEvaluatedPulseCount;
     bool overRangeRejected = false;
 
-    if (measuredRpm > 15000.0)
+    if (measuredRpm > _rpmMaxValid)
     {
         if (newAcceptedPulse && _rpmRejectedReadingCount != UINT32_MAX)
         {
