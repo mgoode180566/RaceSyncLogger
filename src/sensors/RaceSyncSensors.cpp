@@ -5,6 +5,7 @@
 volatile uint32_t RaceSyncSensors::_rpmLastPulseUs = 0;
 volatile uint32_t RaceSyncSensors::_rpmPeriodUs = 0;
 volatile uint32_t RaceSyncSensors::_rpmPulseCount = 0;
+volatile uint32_t RaceSyncSensors::_rpmRejectedPulseCount = 0;
 portMUX_TYPE RaceSyncSensors::_rpmMux = portMUX_INITIALIZER_UNLOCKED;
 
 void ARDUINO_ISR_ATTR RaceSyncSensors::handleRpmPulse()
@@ -26,6 +27,10 @@ void ARDUINO_ISR_ATTR RaceSyncSensors::handleRpmPulse()
         _rpmLastPulseUs = nowUs;
         ++_rpmPulseCount;
     }
+    else if (_rpmRejectedPulseCount != UINT32_MAX)
+    {
+        ++_rpmRejectedPulseCount;
+    }
     portEXIT_CRITICAL_ISR(&_rpmMux);
 }
 
@@ -44,11 +49,13 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     uint32_t lastPulseUs;
     uint32_t periodUs;
     uint32_t pulseCount;
+    uint32_t rejectedPulseCount;
 
     portENTER_CRITICAL(&_rpmMux);
     lastPulseUs = _rpmLastPulseUs;
     periodUs = _rpmPeriodUs;
     pulseCount = _rpmPulseCount;
+    rejectedPulseCount = _rpmRejectedPulseCount;
     portEXIT_CRITICAL(&_rpmMux);
 
     const uint32_t nowUs = micros();
@@ -61,17 +68,44 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     if (_rpmSignalPresent && periodUs > 0)
     {
         measuredRpm = 60000000.0 / (static_cast<double>(periodUs) * RPM_PULSES_PER_REVOLUTION);
+    }
+    _rpmRawMeasured = measuredRpm;
 
-        // Reject readings beyond the useful CB500 range.
-        if (measuredRpm > 15000.0)
+    const bool newAcceptedPulse = pulseCount != _rpmLastEvaluatedPulseCount;
+    bool overRangeRejected = false;
+
+    if (measuredRpm > 15000.0)
+    {
+        if (newAcceptedPulse && _rpmRejectedReadingCount != UINT32_MAX)
         {
-            if (pulseCount != _rpmLastEvaluatedPulseCount &&
-                _rpmRejectedReadingCount != UINT32_MAX)
-            {
-                ++_rpmRejectedReadingCount;
-            }
-            measuredRpm = 0.0;
+            ++_rpmRejectedReadingCount;
         }
+        overRangeRejected = true;
+        measuredRpm = 0.0;
+    }
+
+    // Debug counters flag suspicious one-period excursions before smoothing.
+    // They do not alter the logging/filtering behaviour.
+    if (newAcceptedPulse && !overRangeRejected && measuredRpm > 0.0)
+    {
+        if (_rpm > RPM_DEBUG_MIN_ENGINE_RPM)
+        {
+            if (measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO && _rpmLowSpikeCount != UINT32_MAX)
+                ++_rpmLowSpikeCount;
+            else if (measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO && _rpmHighSpikeCount != UINT32_MAX)
+                ++_rpmHighSpikeCount;
+        }
+
+        if (_rpmMinAccepted == 0.0 || measuredRpm < _rpmMinAccepted) _rpmMinAccepted = measuredRpm;
+        if (measuredRpm > _rpmMaxAccepted) _rpmMaxAccepted = measuredRpm;
+    }
+
+    // A transition from a live engine-speed signal to no signal while the
+    // filtered RPM was above 1000 is counted as a zero/dropout event. This is
+    // useful for spotting the brief zero spikes seen during bench testing.
+    if (_rpmPreviouslySignalPresent && !_rpmSignalPresent && _rpm > RPM_DEBUG_MIN_ENGINE_RPM)
+    {
+        if (_rpmZeroDropCount != UINT32_MAX) ++_rpmZeroDropCount;
     }
 
     if (!_rpmSignalPresent || measuredRpm == 0.0)
@@ -88,8 +122,18 @@ void RaceSyncSensors::update(Telemetry& telemetry)
         _rpm += 0.25 * (measuredRpm - _rpm);
     }
 
+    _rpmPreviouslySignalPresent = _rpmSignalPresent;
     _rpmLastEvaluatedPulseCount = pulseCount;
+
     telemetry.rpmRejectedReadingCount = _rpmRejectedReadingCount;
+    telemetry.rpmRejectedPulseCount = rejectedPulseCount;
+    telemetry.rpmLowSpikeCount = _rpmLowSpikeCount;
+    telemetry.rpmHighSpikeCount = _rpmHighSpikeCount;
+    telemetry.rpmZeroDropCount = _rpmZeroDropCount;
+    telemetry.rpmRawMeasured = _rpmRawMeasured;
+    telemetry.rpmMinAccepted = _rpmMinAccepted;
+    telemetry.rpmMaxAccepted = _rpmMaxAccepted;
+    telemetry.rpmLastPeriodUs = periodUs;
     telemetry.revs = _rpm;
     telemetry.rpmSignalPresent = _rpmSignalPresent;
     telemetry.rpmPulseCount = pulseCount;
