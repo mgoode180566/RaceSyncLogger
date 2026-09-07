@@ -91,11 +91,22 @@ void RaceSyncApi::beginWebUiRoute()
 
     _server.on("/api/session-summaries", HTTP_GET, [this]() {
         JsonDocument doc;
-        doc["device"] = RaceSyncConfig::PRODUCT;
+        doc["device"] = "RaceSync";
         JsonArray sessions = doc["sessions"].to<JsonArray>();
         const String activeFilename = _logger.recording() ? _logger.currentFilename() : "";
         _storage.addSessionsToJson(sessions, activeFilename);
-        for (JsonObject session : sessions) addSessionMetadata(_storage, session);
+        if (!_logger.recording())
+        {
+            for (JsonObject session : sessions) addSessionMetadata(_storage, session);
+        }
+        else
+        {
+            for (JsonObject session : sessions)
+            {
+                session["metadataAvailable"] = false;
+                session["successful"] = session["complete"].as<bool>();
+            }
+        }
         doc["count"] = sessions.size();
         String response;
         serializeJson(doc, response);
