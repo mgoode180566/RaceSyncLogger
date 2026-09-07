@@ -168,6 +168,7 @@ void RaceSyncApi::handleStatus()
     logger["state"] = _logger.recording() ? "RECORDING" : "IDLE";
     logger["recording"] = _logger.recording();
     logger["currentFile"] = _logger.currentFilename();
+    logger["currentLogFile"] = _logger.currentLogFilename();
     logger["samplesWritten"] = _logger.sampleCount();
     logger["startSpeedKmh"] = _logger.startSpeedKmh();
     logger["stopSpeedKmh"] = _logger.stopSpeedKmh();
@@ -175,6 +176,27 @@ void RaceSyncApi::handleStatus()
     logger["recordingSeconds"] = _logger.recordingSeconds();
     uint32_t writeAge = _logger.lastWriteAgeMs();
     logger["lastWriteAgeMs"] = writeAge == UINT32_MAX ? -1 : (int64_t)writeAge;
+
+    JsonObject sessionDiag = logger["sessionDiagnostics"].to<JsonObject>();
+    sessionDiag["gpsDropouts"] = _logger.gpsDropouts();
+    sessionDiag["maxGpsPacketAgeMs"] = _logger.maxGpsPacketAgeMs();
+    sessionDiag["invalidGpsSamples"] = _logger.invalidGpsSamples();
+
+    JsonObject lastSession = logger["lastSession"].to<JsonObject>();
+    lastSession["file"] = _logger.lastSessionFilename();
+    lastSession["logFile"] = _logger.lastSessionLogFilename();
+    lastSession["stopReason"] = _logger.lastStopReason();
+    lastSession["fileSizeBytes"] = _logger.lastSessionFileSizeBytes();
+    lastSession["samplesWritten"] = _logger.lastSessionSamples();
+    lastSession["durationSeconds"] = _logger.lastSessionDurationSeconds();
+    lastSession["stopSpeedKmh"] = _logger.lastStopSpeedKmh();
+    uint32_t stopGpsAge = _logger.lastStopGpsAgeMs();
+    lastSession["stopGpsPacketAgeMs"] = stopGpsAge == UINT32_MAX ? -1 : (int64_t)stopGpsAge;
+    lastSession["stopGpsFixValid"] = _logger.lastStopGpsFixValid();
+    lastSession["stopSatellites"] = _logger.lastStopSatellites();
+    lastSession["gpsDropouts"] = _logger.gpsDropouts();
+    lastSession["maxGpsPacketAgeMs"] = _logger.maxGpsPacketAgeMs();
+    lastSession["invalidGpsSamples"] = _logger.invalidGpsSamples();
 
     JsonObject power = doc["power"].to<JsonObject>();
     power["source"] = "EXTERNAL";
