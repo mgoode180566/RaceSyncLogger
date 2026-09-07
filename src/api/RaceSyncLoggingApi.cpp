@@ -26,6 +26,7 @@ void RaceSyncApi::beginManualLoggingRoutes()
         JsonObject rpm = doc["rpmDiagnostics"].to<JsonObject>();
         rpm["value"] = _telemetry.revs;
         rpm["rawMeasured"] = _telemetry.rpmRawMeasured;
+        rpm["maxValidRpm"] = _telemetry.rpmMaxValid;
         rpm["ledEnabled"] = _telemetry.rpmLedEnabled;
         rpm["signalPresent"] = _telemetry.rpmSignalPresent;
         rpm["pulseCount"] = _telemetry.rpmPulseCount;
