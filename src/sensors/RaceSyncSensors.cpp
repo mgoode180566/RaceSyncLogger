@@ -100,13 +100,7 @@ void RaceSyncSensors::update(Telemetry& telemetry)
         if (measuredRpm > _rpmMaxAccepted) _rpmMaxAccepted = measuredRpm;
     }
 
-    // A transition from a live engine-speed signal to no signal while the
-    // filtered RPM was above 1000 is counted as a zero/dropout event. This is
-    // useful for spotting the brief zero spikes seen during bench testing.
-    if (_rpmPreviouslySignalPresent && !_rpmSignalPresent && _rpm > RPM_DEBUG_MIN_ENGINE_RPM)
-    {
-        if (_rpmZeroDropCount != UINT32_MAX) ++_rpmZeroDropCount;
-    }
+    const double previousFilteredRpm = _rpm;
 
     if (!_rpmSignalPresent || measuredRpm == 0.0)
     {
@@ -120,6 +114,14 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     {
         // Light smoothing removes single-period jitter without hiding gear changes.
         _rpm += 0.25 * (measuredRpm - _rpm);
+    }
+
+    // Count an actual output transition to zero from a running-engine value.
+    // This tells us that a zero could have reached telemetry/VBO, regardless
+    // of whether the cause was signal timeout or an over-range rejection.
+    if (previousFilteredRpm > RPM_DEBUG_MIN_ENGINE_RPM && _rpm == 0.0)
+    {
+        if (_rpmZeroDropCount != UINT32_MAX) ++_rpmZeroDropCount;
     }
 
     _rpmPreviouslySignalPresent = _rpmSignalPresent;
