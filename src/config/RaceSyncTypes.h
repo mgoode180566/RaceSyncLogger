@@ -53,8 +53,16 @@ struct Telemetry
     bool rpmLedEnabled = true;
     uint32_t rpmPulseCount = 0;
     uint32_t rpmRejectedReadingCount = 0;
+    uint32_t rpmRejectedPulseCount = 0;
+    uint32_t rpmLowSpikeCount = 0;
+    uint32_t rpmHighSpikeCount = 0;
+    uint32_t rpmZeroDropCount = 0;
     uint32_t rpmLastPulseAgeMs = UINT32_MAX;
+    uint32_t rpmLastPeriodUs = 0;
     uint8_t rpmInputLevel = HIGH;
+    double rpmRawMeasured = 0.0;
+    double rpmMinAccepted = 0.0;
+    double rpmMaxAccepted = 0.0;
     double fuelPressure = 0.0;
     double comboG = 0.0;
 
