@@ -6,7 +6,7 @@ The intended workflow is simple: **power it on, ride, then download the data in 
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-These instructions describe the current `main` branch (the repository's default branch), including RPM diagnostics and the saved RPM blue-LED preference.
+These instructions describe the session-diagnostics review branch based on the current `main` branch, including RPM diagnostics, the saved RPM blue-LED preference, and per-session reliability logs.
 
 ## Current functionality
 
@@ -18,6 +18,7 @@ These instructions describe the current `main` branch (the repository's default 
 - Manual start and stop controls through the web interface
 - FAT32 microSD storage with startup write/read/delete health testing
 - Active sessions written as `.part`, then finalized as `.vbo` after a clean stop
+- One event-driven `.log` reliability file created alongside every session
 - Automatic recovery of valid, complete VBO rows following interrupted power
 - KML generated and streamed only when requested through the web interface
 - Recording LED indication and five-part startup diagnostics
@@ -33,7 +34,7 @@ These instructions describe the current `main` branch (the repository's default 
 5. After returning, remain below 3 km/h for the configured stop delay.
 6. Confirm recording has stopped before removing power whenever possible; use the web logger status if blue RPM activity obscures the green indicator.
 7. Connect to RaceSync Wi-Fi and open `http://192.168.4.1`.
-8. Download the VBO, generate a KML if required, or delete old sessions.
+8. Download the VBO for analysis. The matching `.log` file remains on the SD card as a diagnostic record for that session.
 
 ## Hardware connections
 
@@ -140,18 +141,57 @@ The web control page can set the start speed from 1–100 km/h and stop delay fr
 
 Automatic logging requires valid live GPS data. Manual start also requires a valid GPS fix and ready storage. A manually started session continues until **Stop Logging** is pressed. Following manual stop, automatic restart is inhibited until speed falls below the configured start threshold.
 
-Storage errors or low free space can also stop a manual session. Sample writing and automatic-stop evaluation depend on valid new GPS samples; if GPS data is lost, check recording state and stop manually rather than assuming the stop delay will close the file. Wi-Fi and the API remain serviced during recording in the current implementation; download/manage sessions in the paddock to avoid adding work to the recording loop.
+A GPS packet age over 1000 ms, a disconnected GPS, or an invalid fix is treated as **unknown movement state**, not as evidence that the motorcycle has stopped. The stationary timer is cleared during that condition and must start again from zero after healthy GPS data returns. This prevents a GPS dropout from directly satisfying the automatic-stop delay.
+
+Storage errors or low free space can stop a manual or automatic session. Wi-Fi and the API remain serviced during recording in the current implementation; download/manage sessions in the paddock to avoid adding work to the recording loop.
+
+## Per-session diagnostic log
+
+Every recording creates a matching text log alongside the VBO:
+
+```text
+RS_2026-09-07_10-32-15.vbo
+RS_2026-09-07_10-32-15.log
+```
+
+The diagnostic file is event-driven rather than written for every 25 Hz sample, keeping additional SD traffic small. It records the session start configuration and significant state transitions such as:
+
+```text
+event=SESSION_START
+event=GPS_STALE
+event=GPS_RECOVERED
+event=STATIONARY_CANDIDATE
+event=MOVEMENT_RESUMED
+event=SESSION_STOP_REQUESTED
+```
+
+Each event includes uptime and, where available, GPS UTC time, speed, fix validity, satellite count, solution type and GPS packet age.
+
+The final summary records:
+
+- start and end time
+- VBO filename and final VBO file size
+- stop reason (`STATIONARY_TIMEOUT`, `MANUAL`, `LOW_STORAGE`, `SD_WRITE_ERROR`, `FORCED`, or another explicit reason)
+- session duration and samples written
+- stop speed, GPS packet age, fix validity and satellite count
+- GPS dropout count
+- maximum GPS packet age seen during the session
+- invalid GPS sample count
+- cumulative SD write-error count and the storage subsystem's latest error text
+
+The same key values remain visible in `/api/status` after the logger returns to `IDLE`, under `logger.lastSession`. During recording, `logger.sessionDiagnostics` exposes the current dropout, maximum-packet-age and invalid-sample counters. These in-memory status values survive the transition back to idle but reset on reboot; the `.log` file is the persistent record.
 
 ## Session integrity and power-loss recovery
 
-During recording, RaceSync writes only the primary VBO data path and uses an incomplete filename:
+During recording, RaceSync writes the primary VBO data path using an incomplete filename while also maintaining the low-frequency event-driven diagnostic log:
 
 ```text
 While recording: RS_2026-09-02_10-32-15.part
+Diagnostics:     RS_2026-09-02_10-32-15.log
 After clean stop: RS_2026-09-02_10-32-15.vbo
 ```
 
-The active file is flushed every second. Logging will not start with less than 1 MB free and stops if space later falls below that limit. On a clean stop, RaceSync flushes and closes the file, renames it to `.vbo`, and verifies the rename before publishing it in the session list.
+The active VBO file is flushed every second. Diagnostic events are flushed when written. Logging will not start with less than 1 MB free and stops if space later falls below that limit. On a clean stop, RaceSync flushes and closes the VBO file, renames it to `.vbo`, verifies the rename, reads the final file size, writes the diagnostic summary, and then closes the log.
 
 If power is lost, the `.part` file remains. On the next boot, after the SD health check passes, RaceSync:
 
@@ -198,7 +238,7 @@ Reboot and logging-setting changes are blocked while a session is active. Manual
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/status` | System, GPS, storage, logger and health diagnostics |
+| GET | `/api/status` | System, GPS, storage, logger, last-session and health diagnostics |
 | GET | `/api/location` | Current GPS location |
 | GET | `/api/telemetry` | Current GPS and sensor channels, including `channels.Revs` |
 | GET | `/api/sessions` | Stored completed-session list |
@@ -227,7 +267,7 @@ To disable RPM blue activity, POST the following JSON to `/api/settings/rpm-led`
 {"enabled": false}
 ```
 
-A successful response contains `{"saved":true,"enabled":false}`. Use `true` to enable it again. The route returns HTTP 409 while recording, 400 for an invalid/missing boolean, and 500 if saving fails. Read the current setting through `/api/telemetry` under `rpm.ledEnabled`; there is no GET route for this setting. RPM diagnostics are in `/api/telemetry`, not `/api/status`.
+A successful response contains `{"saved":true,"enabled":false}`. Use `true` to enable it again. The route returns HTTP 409 while recording, 400 for an invalid/missing boolean, and 500 if saving fails. Read the current setting through `/api/telemetry` under `rpm.ledEnabled`; there is no GET route for this setting. RPM diagnostics remain in `/api/telemetry`; session reliability diagnostics are in `/api/status`.
 
 ## VBO output
 
@@ -258,16 +298,3 @@ platformio run
 platformio run --target upload
 platformio device monitor
 ```
-
-The PlatformIO target is `esp32-s3-devkitc-1`. The repository currently specifies COM4; change `upload_port` and `monitor_port` in `platformio.ini` if Windows assigns another port.
-
-## Pre-track checks
-
-1. Confirm SD-module 5 V power, common ground, and the documented SPI connections.
-2. Confirm the tachometer signal reaches GPIO4 only through the isolated interface.
-3. Confirm startup storage diagnostic 2 passes.
-4. Confirm GPS diagnostic 4 passes, then obtain a valid outdoor fix.
-5. Compare Status-page RPM against the motorcycle tachometer; check accepted pulses, rejected readings and last-pulse age. Confirm the two-pulse-per-revolution calibration is correct for the fitted signal source.
-6. Disable the RPM blue LED if you want an unobscured green recording indicator; reboot while idle and verify the preference persists.
-7. Record a short test, stop normally, download the VBO, and inspect its `Revs` data.
-8. Perform a controlled interrupted-power test using disposable test data and confirm recovery through `/api/status` before relying on it at the circuit.
