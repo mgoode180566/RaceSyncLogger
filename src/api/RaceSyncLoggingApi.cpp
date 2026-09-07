@@ -21,14 +21,21 @@ void RaceSyncApi::beginManualLoggingRoutes()
         doc["rpm"] = _telemetry.revs;
 
         // RPM diagnostics are RAM-only and remain available both while IDLE
-        // and while recording. This is intentionally safe for bench testing
-        // without introducing SD I/O into the race-critical logging path.
+        // and while recording. No SD access is performed for these values.
         JsonObject rpm = doc["rpmDiagnostics"].to<JsonObject>();
         rpm["value"] = _telemetry.revs;
+        rpm["rawMeasured"] = _telemetry.rpmRawMeasured;
         rpm["ledEnabled"] = _telemetry.rpmLedEnabled;
         rpm["signalPresent"] = _telemetry.rpmSignalPresent;
         rpm["pulseCount"] = _telemetry.rpmPulseCount;
+        rpm["rejectedPulseCount"] = _telemetry.rpmRejectedPulseCount;
         rpm["rejectedReadingCount"] = _telemetry.rpmRejectedReadingCount;
+        rpm["lowSpikeCount"] = _telemetry.rpmLowSpikeCount;
+        rpm["highSpikeCount"] = _telemetry.rpmHighSpikeCount;
+        rpm["zeroDropCount"] = _telemetry.rpmZeroDropCount;
+        rpm["minAccepted"] = _telemetry.rpmMinAccepted;
+        rpm["maxAccepted"] = _telemetry.rpmMaxAccepted;
+        rpm["lastPeriodUs"] = _telemetry.rpmLastPeriodUs;
         rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX ? -1 : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
         rpm["inputPin"] = Pin::RPM_INPUT;
         rpm["inputLevel"] = _telemetry.rpmInputLevel;
