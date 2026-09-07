@@ -77,6 +77,22 @@ namespace
         month = 1;
         ++year;
     }
+
+    String ukLocalTimestamp(const Telemetry& t)
+    {
+        if (!t.timeValid || t.year < 2024)
+            return String("uptime:") + String((unsigned long)(millis() / 1000));
+
+        uint16_t year;
+        uint8_t month, day, hour, minute, second;
+        const bool bst = isBritishSummerTime(t);
+        ukLocalDateTime(t, year, month, day, hour, minute, second);
+
+        char b[40];
+        snprintf(b, sizeof(b), "%04u-%02u-%02uT%02u:%02u:%02u%s",
+                 year, month, day, hour, minute, second, bst ? "+01:00" : "+00:00");
+        return String(b);
+    }
 }
 
 void RaceSyncLogger::loadAutomaticSettings()
@@ -193,6 +209,7 @@ void RaceSyncLogger::writeDiagnosticEvent(const char* event, const Telemetry* te
     _logFile.print(" uptimeMs="); _logFile.print(millis());
     if (telemetry)
     {
+        _logFile.print(" local="); _logFile.print(ukLocalTimestamp(*telemetry));
         _logFile.print(" utc="); _logFile.print(telemetryTimestamp(*telemetry));
         _logFile.print(" speedKmh="); _logFile.print(telemetry->velocityKmh, 3);
         _logFile.print(" fixValid="); _logFile.print(telemetry->valid ? "true" : "false");
@@ -209,7 +226,8 @@ void RaceSyncLogger::writeDiagnosticSummary(bool finalized)
 {
     if (!_logFile) return;
     _logFile.println("[summary]");
-    _logFile.print("endTime="); _logFile.println(_haveLastTelemetry ? telemetryTimestamp(_lastTelemetry) : String("unknown"));
+    _logFile.print("endTime="); _logFile.println(_haveLastTelemetry ? ukLocalTimestamp(_lastTelemetry) : String("unknown"));
+    _logFile.print("endTimeUtc="); _logFile.println(_haveLastTelemetry ? telemetryTimestamp(_lastTelemetry) : String("unknown"));
     _logFile.print("stopReason="); _logFile.println(_lastStopReason);
     _logFile.print("durationSeconds="); _logFile.println(_lastSessionDurationSeconds);
     _logFile.print("samplesWritten="); _logFile.println(_lastSessionSamples);
@@ -278,7 +296,8 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     {
         _logFile.println("RaceSync session diagnostic log");
         _logFile.print("vboFile="); _logFile.println(_filename);
-        _logFile.print("startTime="); _logFile.println(telemetryTimestamp(t));
+        _logFile.print("startTime="); _logFile.println(ukLocalTimestamp(t));
+        _logFile.print("startTimeUtc="); _logFile.println(telemetryTimestamp(t));
         _logFile.print("startMode="); _logFile.println(manual ? "MANUAL" : "AUTO");
         _logFile.print("startSpeedKmh="); _logFile.println(_startSpeedKmh, 2);
         _logFile.print("stopSpeedKmh="); _logFile.println(_stopSpeedKmh, 2);
