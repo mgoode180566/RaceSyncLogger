@@ -35,6 +35,29 @@ void ARDUINO_ISR_ATTR RaceSyncSensors::handleRpmPulse()
     portEXIT_CRITICAL_ISR(&_rpmMux);
 }
 
+double RaceSyncSensors::medianOfThree(double a, double b, double c)
+{
+    if (a > b)
+    {
+        const double t = a;
+        a = b;
+        b = t;
+    }
+    if (b > c)
+    {
+        const double t = b;
+        b = c;
+        c = t;
+    }
+    if (a > b)
+    {
+        const double t = a;
+        a = b;
+        b = t;
+    }
+    return b;
+}
+
 bool RaceSyncSensors::begin()
 {
     Preferences preferences;
@@ -90,53 +113,77 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     _rpmRawMeasured = measuredRpm;
 
     const bool newAcceptedPulse = pulseCount != _rpmLastEvaluatedPulseCount;
-    bool overRangeRejected = false;
-
-    if (measuredRpm > _rpmMaxValid)
-    {
-        if (newAcceptedPulse && _rpmRejectedReadingCount != UINT32_MAX)
-        {
-            ++_rpmRejectedReadingCount;
-        }
-        overRangeRejected = true;
-        measuredRpm = 0.0;
-    }
-
-    // Debug counters flag suspicious one-period excursions before smoothing.
-    // They do not alter the logging/filtering behaviour.
-    if (newAcceptedPulse && !overRangeRejected && measuredRpm > 0.0)
-    {
-        if (_rpm > RPM_DEBUG_MIN_ENGINE_RPM)
-        {
-            if (measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO && _rpmLowSpikeCount != UINT32_MAX)
-                ++_rpmLowSpikeCount;
-            else if (measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO && _rpmHighSpikeCount != UINT32_MAX)
-                ++_rpmHighSpikeCount;
-        }
-
-        if (_rpmMinAccepted == 0.0 || measuredRpm < _rpmMinAccepted) _rpmMinAccepted = measuredRpm;
-        if (measuredRpm > _rpmMaxAccepted) _rpmMaxAccepted = measuredRpm;
-    }
-
     const double previousFilteredRpm = _rpm;
 
-    if (!_rpmSignalPresent || measuredRpm == 0.0)
+    if (!_rpmSignalPresent)
     {
+        // Only a genuine loss of tach pulses is allowed to drive the published
+        // RPM to zero. Rejected/noisy readings hold the previous good value.
         _rpm = 0.0;
+        _rpmHistoryCount = 0;
+        _rpmHistoryIndex = 0;
     }
-    else if (_rpm == 0.0)
+    else if (newAcceptedPulse && measuredRpm > 0.0)
     {
-        _rpm = measuredRpm;
-    }
-    else
-    {
-        // Light smoothing removes single-period jitter without hiding gear changes.
-        _rpm += 0.25 * (measuredRpm - _rpm);
+        bool rejectReading = false;
+
+        // First reject an absolute over-range measurement. Do not convert it
+        // to zero; keep the previous valid RPM until a good pulse arrives.
+        if (measuredRpm > _rpmMaxValid)
+        {
+            rejectReading = true;
+            if (_rpmRejectedReadingCount != UINT32_MAX)
+                ++_rpmRejectedReadingCount;
+        }
+
+        // Flag and reject physically implausible one-period excursions once
+        // the engine is already known to be running. These thresholds existed
+        // as diagnostics previously; they now protect the logged RPM trace.
+        if (!rejectReading && _rpm > RPM_DEBUG_MIN_ENGINE_RPM)
+        {
+            if (measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO)
+            {
+                rejectReading = true;
+                if (_rpmLowSpikeCount != UINT32_MAX) ++_rpmLowSpikeCount;
+                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+            }
+            else if (measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO)
+            {
+                rejectReading = true;
+                if (_rpmHighSpikeCount != UINT32_MAX) ++_rpmHighSpikeCount;
+                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+            }
+        }
+
+        if (!rejectReading)
+        {
+            _rpmHistory[_rpmHistoryIndex] = measuredRpm;
+            _rpmHistoryIndex = (_rpmHistoryIndex + 1U) % 3U;
+            if (_rpmHistoryCount < 3U) ++_rpmHistoryCount;
+
+            double filteredInput = measuredRpm;
+            if (_rpmHistoryCount == 3U)
+            {
+                filteredInput = medianOfThree(_rpmHistory[0], _rpmHistory[1], _rpmHistory[2]);
+            }
+
+            if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
+            if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
+
+            if (_rpm == 0.0)
+            {
+                _rpm = filteredInput;
+            }
+            else
+            {
+                // Update once per accepted pulse, not once per main-loop pass.
+                // This keeps filter behaviour independent of loop frequency.
+                _rpm += RPM_FILTER_ALPHA * (filteredInput - _rpm);
+            }
+        }
     }
 
-    // Count an actual output transition to zero from a running-engine value.
-    // This tells us that a zero could have reached telemetry/VBO, regardless
-    // of whether the cause was signal timeout or an over-range rejection.
+    // Count only a genuine output transition to zero caused by signal timeout.
     if (previousFilteredRpm > RPM_DEBUG_MIN_ENGINE_RPM && _rpm == 0.0)
     {
         if (_rpmZeroDropCount != UINT32_MAX) ++_rpmZeroDropCount;
