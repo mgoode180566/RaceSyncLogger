@@ -4,6 +4,79 @@
 namespace
 {
     constexpr uint32_t GPS_STALE_THRESHOLD_MS = 1000;
+
+    bool isLeapYear(uint16_t year)
+    {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    }
+
+    uint8_t daysInMonth(uint16_t year, uint8_t month)
+    {
+        static const uint8_t days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        if (month == 2 && isLeapYear(year)) return 29;
+        return (month >= 1 && month <= 12) ? days[month - 1] : 31;
+    }
+
+    uint8_t dayOfWeek(uint16_t year, uint8_t month, uint8_t day)
+    {
+        // Sakamoto algorithm: 0 = Sunday ... 6 = Saturday.
+        static const uint8_t offsets[] = {0,3,2,5,0,3,5,1,4,6,2,4};
+        if (month < 3) --year;
+        return (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
+    }
+
+    uint8_t lastSunday(uint16_t year, uint8_t month)
+    {
+        const uint8_t lastDay = daysInMonth(year, month);
+        return lastDay - dayOfWeek(year, month, lastDay);
+    }
+
+    bool isBritishSummerTime(const Telemetry& t)
+    {
+        // UK BST starts at 01:00 UTC on the last Sunday in March and
+        // ends at 01:00 UTC on the last Sunday in October.
+        if (t.month < 3 || t.month > 10) return false;
+        if (t.month > 3 && t.month < 10) return true;
+
+        const uint8_t transitionDay = lastSunday(t.year, t.month);
+        if (t.month == 3)
+        {
+            if (t.day > transitionDay) return true;
+            if (t.day < transitionDay) return false;
+            return t.hour >= 1;
+        }
+
+        if (t.day < transitionDay) return true;
+        if (t.day > transitionDay) return false;
+        return t.hour < 1;
+    }
+
+    void ukLocalDateTime(const Telemetry& t, uint16_t& year, uint8_t& month, uint8_t& day,
+                         uint8_t& hour, uint8_t& minute, uint8_t& second)
+    {
+        year = t.year;
+        month = t.month;
+        day = t.day;
+        hour = t.hour;
+        minute = t.minute;
+        second = t.second;
+
+        if (!isBritishSummerTime(t)) return;
+
+        ++hour;
+        if (hour < 24) return;
+
+        hour = 0;
+        ++day;
+        if (day <= daysInMonth(year, month)) return;
+
+        day = 1;
+        ++month;
+        if (month <= 12) return;
+
+        month = 1;
+        ++year;
+    }
 }
 
 void RaceSyncLogger::loadAutomaticSettings()
@@ -72,7 +145,12 @@ String RaceSyncLogger::createFilename(const Telemetry& t, DataMode mode) const
 {
     char b[64];
     if (t.timeValid && t.year >= 2024)
-        snprintf(b, sizeof(b), "RS_%04u-%02u-%02u_%02u-%02u-%02u.vbo", t.year,t.month,t.day,t.hour,t.minute,t.second);
+    {
+        uint16_t year;
+        uint8_t month, day, hour, minute, second;
+        ukLocalDateTime(t, year, month, day, hour, minute, second);
+        snprintf(b, sizeof(b), "RS_%04u-%02u-%02u_%02u-%02u-%02u.vbo", year, month, day, hour, minute, second);
+    }
     else
         snprintf(b, sizeof(b), "RS_LIVE_%010lu.vbo", (unsigned long)millis());
     return String(b);
