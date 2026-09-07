@@ -4,6 +4,7 @@
 namespace
 {
     constexpr uint32_t GPS_STALE_THRESHOLD_MS = 1000;
+    constexpr uint8_t GPS_MIN_SATELLITES_FOR_START = 4;
 
     bool isLeapYear(uint16_t year)
     {
@@ -378,8 +379,16 @@ void RaceSyncLogger::stop(bool finalize, const char* reason)
 
 bool RaceSyncLogger::manualStart(const Telemetry& telemetry, DataMode mode)
 {
-    if (!telemetry.valid) {
-        Serial.println("[LOGGER] Manual start rejected - GPS fix not valid");
+    const bool gpsReady = telemetry.valid &&
+                          telemetry.timeValid &&
+                          telemetry.satellites >= GPS_MIN_SATELLITES_FOR_START &&
+                          _currentGpsAgeMs != UINT32_MAX &&
+                          _currentGpsAgeMs <= GPS_STALE_THRESHOLD_MS;
+    if (!gpsReady) {
+        Serial.printf("[LOGGER] Manual start rejected - GPS not ready (valid=%s, sats=%u, packetAgeMs=%ld)\n",
+                      telemetry.valid ? "true" : "false",
+                      telemetry.satellites,
+                      _currentGpsAgeMs == UINT32_MAX ? -1L : (long)_currentGpsAgeMs);
         return false;
     }
     return start(telemetry, mode, true);
@@ -468,7 +477,13 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
         }
     }
 
-    if (!_recording && t.velocityKmh >= _startSpeedKmh) start(t,mode,false);
+    const bool gpsReadyForAutoStart = t.timeValid &&
+                                      t.satellites >= GPS_MIN_SATELLITES_FOR_START &&
+                                      _currentGpsAgeMs != UINT32_MAX &&
+                                      _currentGpsAgeMs <= GPS_STALE_THRESHOLD_MS;
+
+    if (!_recording && gpsReadyForAutoStart && t.velocityKmh >= _startSpeedKmh)
+        start(t,mode,false);
     if (!_recording) return;
     writeSample(t); if (!_recording) return;
 
