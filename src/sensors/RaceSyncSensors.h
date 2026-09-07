@@ -22,7 +22,9 @@ private:
     static constexpr float RPM_PULSES_PER_REVOLUTION = 2.0f;
     static constexpr uint32_t RPM_MIN_PULSE_INTERVAL_US = 1500;
     static constexpr uint32_t RPM_SIGNAL_TIMEOUT_US = 500000;
-    static constexpr double RPM_MAX_VALID = 11000.0;
+    static constexpr double RPM_DEFAULT_MAX_VALID = 11000.0;
+    static constexpr double RPM_MIN_CONFIGURABLE_LIMIT = 1000.0;
+    static constexpr double RPM_MAX_CONFIGURABLE_LIMIT = 30000.0;
     static constexpr double RPM_DEBUG_MIN_ENGINE_RPM = 1000.0;
     static constexpr double RPM_LOW_SPIKE_RATIO = 0.50;
     static constexpr double RPM_HIGH_SPIKE_RATIO = 1.50;
@@ -43,6 +45,7 @@ private:
     double _rpmRawMeasured = 0.0;
     double _rpmMinAccepted = 0.0;
     double _rpmMaxAccepted = 0.0;
+    double _rpmMaxValid = RPM_DEFAULT_MAX_VALID;
     uint32_t _rpmLastPulseAgeMs = UINT32_MAX;
     bool _rpmSignalPresent = false;
     bool _rpmPreviouslySignalPresent = false;
