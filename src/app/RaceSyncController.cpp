@@ -277,6 +277,10 @@ void RaceSyncController::update()
         newSample = true;
     }
 
+    // Feed continuous GPS health into the logger so a stale/no-fix state can never
+    // be interpreted as proof that the motorcycle is stationary.
+    _logger.observeGpsHealth(_gps.connected(), _telemetry.valid, _gps.lastPacketAgeMs());
+
     // Sample RPM continuously; the most recent value is attached to each GPS sample.
     _sensors.update(_telemetry);
     updateRpmPulseLed();
