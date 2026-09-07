@@ -49,6 +49,8 @@ private:
     bool _recording = false;
     bool _manualSession = false;
     bool _autoStartInhibit = false;
+    uint32_t _autoStartCandidateSince = 0;
+    uint32_t _autoRearmStationarySince = 0;
     File _file;
     File _logFile;
     String _filename;

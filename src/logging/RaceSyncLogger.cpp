@@ -4,7 +4,10 @@
 namespace
 {
     constexpr uint32_t GPS_STALE_THRESHOLD_MS = 1000;
-    constexpr uint8_t GPS_MIN_SATELLITES_FOR_START = 4;
+    constexpr uint8_t GPS_MIN_SATELLITES_FOR_MANUAL_START = 4;
+    constexpr uint8_t GPS_MIN_SATELLITES_FOR_AUTO_START = 6;
+    constexpr uint32_t AUTO_START_CONFIRM_MS = 2000;
+    constexpr uint32_t AUTO_REARM_STATIONARY_MS = 3000;
 
     bool isLeapYear(uint16_t year)
     {
@@ -20,7 +23,6 @@ namespace
 
     uint8_t dayOfWeek(uint16_t year, uint8_t month, uint8_t day)
     {
-        // Sakamoto algorithm: 0 = Sunday ... 6 = Saturday.
         static const uint8_t offsets[] = {0,3,2,5,0,3,5,1,4,6,2,4};
         if (month < 3) --year;
         return (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
@@ -34,8 +36,6 @@ namespace
 
     bool isBritishSummerTime(const Telemetry& t)
     {
-        // UK BST starts at 01:00 UTC on the last Sunday in March and
-        // ends at 01:00 UTC on the last Sunday in October.
         if (t.month < 3 || t.month > 10) return false;
         if (t.month > 3 && t.month < 10) return true;
 
@@ -264,6 +264,8 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
         if (manual) {
             _manualSession = true;
             _autoStartInhibit = false;
+            _autoStartCandidateSince = 0;
+            _autoRearmStationarySince = 0;
             Serial.println("[LOGGER] Existing recording switched to manual control");
         }
         return true;
@@ -290,7 +292,7 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     }
 
     writeHeader(_file,mode); _file.flush();
-    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false;
+    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false; _autoStartCandidateSince=0; _autoRearmStationarySince=0;
     _lastTelemetry=t; _haveLastTelemetry=true; _sessionGpsDropouts=0; _sessionMaxGpsPacketAgeMs=0; _sessionInvalidGpsSamples=0; _gpsStale=false; _stationaryCandidateLogged=false;
 
     if (_logFile)
@@ -369,6 +371,7 @@ void RaceSyncLogger::stop(bool finalize, const char* reason)
     _manualSession=false;
     _belowSpeedSince=0;
     _stationaryCandidateLogged=false;
+    _autoStartCandidateSince=0;
 
     if (finalized)
     {
@@ -381,7 +384,7 @@ bool RaceSyncLogger::manualStart(const Telemetry& telemetry, DataMode mode)
 {
     const bool gpsReady = telemetry.valid &&
                           telemetry.timeValid &&
-                          telemetry.satellites >= GPS_MIN_SATELLITES_FOR_START &&
+                          telemetry.satellites >= GPS_MIN_SATELLITES_FOR_MANUAL_START &&
                           _currentGpsAgeMs != UINT32_MAX &&
                           _currentGpsAgeMs <= GPS_STALE_THRESHOLD_MS;
     if (!gpsReady) {
@@ -398,9 +401,13 @@ bool RaceSyncLogger::manualStop()
 {
     if (!_recording) return false;
     _autoStartInhibit = true;
+    _autoStartCandidateSince = 0;
+    _autoRearmStationarySince = 0;
     stop(true, "MANUAL");
     _autoStartInhibit = true;
-    Serial.println("[LOGGER] Manual stop - automatic restart inhibited until speed drops below start threshold");
+    _autoStartCandidateSince = 0;
+    _autoRearmStationarySince = 0;
+    Serial.println("[LOGGER] Manual stop - automatic restart inhibited until healthy stationary GPS is stable for 3 seconds");
     return true;
 }
 
@@ -431,7 +438,6 @@ void RaceSyncLogger::observeGpsHealth(bool connected, bool fixValid, uint32_t pa
 
     if (!fixValid)
     {
-        // An invalid fix is unknown motion state, never evidence that the bike is stationary.
         _belowSpeedSince = 0;
         _stationaryCandidateLogged = false;
     }
@@ -454,6 +460,8 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
 
     if (!t.valid)
     {
+        _autoStartCandidateSince = 0;
+        _autoRearmStationarySince = 0;
         if (_recording)
         {
             ++_sessionInvalidGpsSamples;
@@ -468,26 +476,64 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
         return;
     }
 
-    if (_autoStartInhibit) {
-        if (t.velocityKmh < _startSpeedKmh) {
-            _autoStartInhibit = false;
-            Serial.println("[LOGGER] Automatic start re-enabled");
-        } else {
+    const bool gpsFresh = _currentGpsAgeMs != UINT32_MAX &&
+                          _currentGpsAgeMs <= GPS_STALE_THRESHOLD_MS;
+    const bool gpsHealthyForAuto = t.timeValid &&
+                                   t.satellites >= GPS_MIN_SATELLITES_FOR_AUTO_START &&
+                                   gpsFresh;
+
+    if (_autoStartInhibit)
+    {
+        const bool healthyStationary = gpsHealthyForAuto && t.velocityKmh <= _stopSpeedKmh;
+        if (!healthyStationary)
+        {
+            _autoRearmStationarySince = 0;
+            _autoStartCandidateSince = 0;
             return;
         }
+
+        if (_autoRearmStationarySince == 0)
+        {
+            _autoRearmStationarySince = millis();
+            return;
+        }
+
+        if (millis() - _autoRearmStationarySince < AUTO_REARM_STATIONARY_MS)
+            return;
+
+        _autoStartInhibit = false;
+        _autoRearmStationarySince = 0;
+        _autoStartCandidateSince = 0;
+        Serial.println("[LOGGER] Automatic start re-enabled after 3 seconds of healthy stationary GPS");
     }
 
-    const bool gpsReadyForAutoStart = t.timeValid &&
-                                      t.satellites >= GPS_MIN_SATELLITES_FOR_START &&
-                                      _currentGpsAgeMs != UINT32_MAX &&
-                                      _currentGpsAgeMs <= GPS_STALE_THRESHOLD_MS;
+    if (!_recording)
+    {
+        const bool startCandidate = gpsHealthyForAuto && t.velocityKmh >= _startSpeedKmh;
+        if (!startCandidate)
+        {
+            _autoStartCandidateSince = 0;
+            return;
+        }
 
-    if (!_recording && gpsReadyForAutoStart && t.velocityKmh >= _startSpeedKmh)
-        start(t,mode,false);
-    if (!_recording) return;
+        if (_autoStartCandidateSince == 0)
+        {
+            _autoStartCandidateSince = millis();
+            Serial.printf("[LOGGER] Auto-start candidate: %.1f km/h, sats=%u; confirming for 2 seconds\n",
+                          t.velocityKmh, t.satellites);
+            return;
+        }
+
+        if (millis() - _autoStartCandidateSince < AUTO_START_CONFIRM_MS)
+            return;
+
+        _autoStartCandidateSince = 0;
+        if (!start(t, mode, false))
+            return;
+    }
+
     writeSample(t); if (!_recording) return;
 
-    // A stale GPS state is unknown motion, not stationary. Do not advance stop timing.
     if (_gpsStale)
     {
         _belowSpeedSince = 0;
