@@ -65,6 +65,62 @@ void RaceSyncApi::beginSettingsRoutes()
         sendJson(200, response);
     });
 
+    _server.on("/api/settings/rpm", HTTP_GET, [this]()
+    {
+        JsonDocument doc;
+        doc["maxValidRpm"] = _telemetry.rpmMaxValid > 0.0 ? _telemetry.rpmMaxValid : 11000.0;
+        doc["ledEnabled"] = _telemetry.rpmLedEnabled;
+        doc["recording"] = _logger.recording();
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+    });
+
+    _server.on("/api/settings/rpm", HTTP_POST, [this]()
+    {
+        if (_logger.recording())
+        {
+            sendJson(409, "{\"error\":\"Stop recording before changing the RPM limit\"}");
+            return;
+        }
+
+        JsonDocument input;
+        if (!_server.hasArg("plain") || deserializeJson(input, _server.arg("plain")) || !input["maxValidRpm"].is<double>())
+        {
+            sendJson(400, "{\"error\":\"A numeric maxValidRpm is required\"}");
+            return;
+        }
+
+        const double maxValidRpm = input["maxValidRpm"].as<double>();
+        if (maxValidRpm < 1000.0 || maxValidRpm > 30000.0)
+        {
+            sendJson(400, "{\"error\":\"RPM limit must be between 1000 and 30000 rpm\"}");
+            return;
+        }
+
+        Preferences preferences;
+        if (!preferences.begin("racesync", false))
+        {
+            sendJson(500, "{\"error\":\"Unable to open settings storage\"}");
+            return;
+        }
+        const bool saved = preferences.putDouble("rpmMaxValid", maxValidRpm) != 0;
+        preferences.end();
+        if (!saved)
+        {
+            sendJson(500, "{\"error\":\"Unable to save RPM limit\"}");
+            return;
+        }
+
+        _telemetry.rpmMaxValid = maxValidRpm;
+        JsonDocument doc;
+        doc["saved"] = true;
+        doc["maxValidRpm"] = _telemetry.rpmMaxValid;
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+    });
+
     _server.on("/api/settings/rpm-led", HTTP_POST, [this]()
     {
         if (_logger.recording())

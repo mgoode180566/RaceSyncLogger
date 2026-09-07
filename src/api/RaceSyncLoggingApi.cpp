@@ -1,6 +1,7 @@
 #include "RaceSyncApi.h"
 
 #include <ArduinoJson.h>
+#include "../../include/Pins.h"
 
 void RaceSyncApi::beginManualLoggingRoutes()
 {
@@ -19,6 +20,28 @@ void RaceSyncApi::beginManualLoggingRoutes()
         doc["satellites"] = _telemetry.satellites;
         doc["speedKmh"] = _telemetry.velocityKmh;
         doc["rpm"] = _telemetry.revs;
+
+        // RPM diagnostics are RAM-only and remain available both while IDLE
+        // and while recording. No SD access is performed for these values.
+        JsonObject rpm = doc["rpmDiagnostics"].to<JsonObject>();
+        rpm["value"] = _telemetry.revs;
+        rpm["rawMeasured"] = _telemetry.rpmRawMeasured;
+        rpm["maxValidRpm"] = _telemetry.rpmMaxValid;
+        rpm["ledEnabled"] = _telemetry.rpmLedEnabled;
+        rpm["signalPresent"] = _telemetry.rpmSignalPresent;
+        rpm["pulseCount"] = _telemetry.rpmPulseCount;
+        rpm["rejectedPulseCount"] = _telemetry.rpmRejectedPulseCount;
+        rpm["rejectedReadingCount"] = _telemetry.rpmRejectedReadingCount;
+        rpm["lowSpikeCount"] = _telemetry.rpmLowSpikeCount;
+        rpm["highSpikeCount"] = _telemetry.rpmHighSpikeCount;
+        rpm["zeroDropCount"] = _telemetry.rpmZeroDropCount;
+        rpm["minAccepted"] = _telemetry.rpmMinAccepted;
+        rpm["maxAccepted"] = _telemetry.rpmMaxAccepted;
+        rpm["lastPeriodUs"] = _telemetry.rpmLastPeriodUs;
+        rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX ? -1 : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
+        rpm["inputPin"] = Pin::RPM_INPUT;
+        rpm["inputLevel"] = _telemetry.rpmInputLevel;
+
         doc["storageReady"] = _storage.ready();
         doc["storageWritable"] = _storage.writable();
         doc["racePriorityMode"] = _logger.recording();
