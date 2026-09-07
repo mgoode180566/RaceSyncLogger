@@ -51,6 +51,7 @@ struct Telemetry
     double revs = 0.0;
     bool rpmSignalPresent = false;
     bool rpmLedEnabled = true;
+    double rpmMaxValid = 11000.0;
     uint32_t rpmPulseCount = 0;
     uint32_t rpmRejectedReadingCount = 0;
     uint32_t rpmRejectedPulseCount = 0;
