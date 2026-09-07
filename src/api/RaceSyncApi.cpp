@@ -75,6 +75,49 @@ const char* RaceSyncApi::resetReasonName()
 
 void RaceSyncApi::handleStatus()
 {
+    // During recording this endpoint must be RAM-only. In particular it must
+    // not call SD capacity functions or enumerate the session directory.
+    if (_logger.recording())
+    {
+        JsonDocument doc;
+        JsonObject system = doc["system"].to<JsonObject>();
+        system["product"] = RaceSyncConfig::PRODUCT;
+        system["firmware"] = RaceSyncConfig::FIRMWARE;
+        system["mode"] = dataModeName(_mode);
+        system["uptimeSeconds"] = millis() / 1000;
+        system["racePriorityMode"] = true;
+
+        JsonObject gps = doc["gps"].to<JsonObject>();
+        gps["connected"] = _gps.connected();
+        gps["validFix"] = _telemetry.valid;
+        gps["satellites"] = _telemetry.satellites;
+        gps["speedKmh"] = _telemetry.velocityKmh;
+        uint32_t packetAge = _gps.lastPacketAgeMs();
+        gps["lastPacketAgeMs"] = packetAge == UINT32_MAX ? -1 : (int64_t)packetAge;
+
+        JsonObject storage = doc["storage"].to<JsonObject>();
+        storage["ready"] = _storage.ready();
+        storage["readable"] = _storage.readable();
+        storage["writable"] = _storage.writable();
+        storage["writeErrors"] = _logger.storageWriteErrors();
+        storage["ioSuppressedForWeb"] = true;
+
+        JsonObject logger = doc["logger"].to<JsonObject>();
+        logger["state"] = "RECORDING";
+        logger["recording"] = true;
+        logger["manual"] = _logger.manualSession();
+        logger["currentFile"] = _logger.currentFilename();
+        logger["samplesWritten"] = _logger.sampleCount();
+        logger["recordingSeconds"] = _logger.recordingSeconds();
+        uint32_t writeAge = _logger.lastWriteAgeMs();
+        logger["lastWriteAgeMs"] = writeAge == UINT32_MAX ? -1 : (int64_t)writeAge;
+
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+        return;
+    }
+
     JsonDocument doc;
 
     JsonObject system = doc["system"].to<JsonObject>();
@@ -85,6 +128,7 @@ void RaceSyncApi::handleStatus()
     system["uptime"] = formatUptime();
     system["bootCount"] = _bootCount;
     system["resetReason"] = resetReasonName();
+    system["racePriorityMode"] = false;
 
     JsonObject board = doc["board"].to<JsonObject>();
     board["model"] = "ESP32-S3 DevKitC-1";
@@ -165,15 +209,16 @@ void RaceSyncApi::handleStatus()
     storage["minimumFreeReserveBytes"] = RaceSyncConfig::MIN_FREE_STORAGE_BYTES;
 
     JsonObject logger = doc["logger"].to<JsonObject>();
-    logger["state"] = _logger.recording() ? "RECORDING" : "IDLE";
-    logger["recording"] = _logger.recording();
+    logger["state"] = "IDLE";
+    logger["recording"] = false;
+    logger["manual"] = false;
     logger["currentFile"] = _logger.currentFilename();
     logger["currentLogFile"] = _logger.currentLogFilename();
     logger["samplesWritten"] = _logger.sampleCount();
     logger["startSpeedKmh"] = _logger.startSpeedKmh();
     logger["stopSpeedKmh"] = _logger.stopSpeedKmh();
     logger["stopDelaySeconds"] = _logger.stopDelaySeconds();
-    logger["recordingSeconds"] = _logger.recordingSeconds();
+    logger["recordingSeconds"] = 0;
     uint32_t writeAge = _logger.lastWriteAgeMs();
     logger["lastWriteAgeMs"] = writeAge == UINT32_MAX ? -1 : (int64_t)writeAge;
 
@@ -194,9 +239,6 @@ void RaceSyncApi::handleStatus()
     lastSession["stopGpsPacketAgeMs"] = stopGpsAge == UINT32_MAX ? -1 : (int64_t)stopGpsAge;
     lastSession["stopGpsFixValid"] = _logger.lastStopGpsFixValid();
     lastSession["stopSatellites"] = _logger.lastStopSatellites();
-    lastSession["gpsDropouts"] = _logger.gpsDropouts();
-    lastSession["maxGpsPacketAgeMs"] = _logger.maxGpsPacketAgeMs();
-    lastSession["invalidGpsSamples"] = _logger.invalidGpsSamples();
 
     JsonObject power = doc["power"].to<JsonObject>();
     power["source"] = "EXTERNAL";
@@ -214,12 +256,14 @@ void RaceSyncApi::handleStatus()
     else if (usedPercent >= RaceSyncConfig::STORAGE_WARNING_PERCENT) health["storage"] = "WARNING";
     else health["storage"] = "OK";
 
-    health["logger"] = _logger.recording() ? "RECORDING" : "IDLE";
+    health["logger"] = "IDLE";
     health["wifi"] = "OK";
     bool systemHealthy = _storage.ready() && _storage.readable() && _storage.writable() && usedPercent < RaceSyncConfig::STORAGE_WARNING_PERCENT && ESP.getFreeHeap() > RaceSyncConfig::MIN_HEALTHY_HEAP_BYTES;
     health["overall"] = systemHealthy ? "OK" : "WARNING";
 
-    String response; serializeJson(doc, response); sendJson(200, response);
+    String response;
+    serializeJson(doc, response);
+    sendJson(200, response);
 }
 
 void RaceSyncApi::handleLocation()
@@ -266,9 +310,7 @@ void RaceSyncApi::handleTelemetry()
     rpm["signalPresent"] = _telemetry.rpmSignalPresent;
     rpm["pulseCount"] = _telemetry.rpmPulseCount;
     rpm["rejectedReadingCount"] = _telemetry.rpmRejectedReadingCount;
-    rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX
-        ? -1
-        : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
+    rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX ? -1 : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
     rpm["inputPin"] = Pin::RPM_INPUT;
     rpm["inputLevel"] = _telemetry.rpmInputLevel;
 
@@ -277,11 +319,16 @@ void RaceSyncApi::handleTelemetry()
 
 void RaceSyncApi::handleSessions()
 {
+    if (_logger.recording())
+    {
+        sendJson(423, "{\"error\":\"Session listing suspended while recording\",\"racePriorityMode\":true}");
+        return;
+    }
+
     JsonDocument doc;
     doc["device"] = RaceSyncConfig::PRODUCT;
     JsonArray sessions = doc["sessions"].to<JsonArray>();
-    String activeFilename = _logger.recording() ? _logger.currentFilename() : "";
-    _storage.addSessionsToJson(sessions, activeFilename);
+    _storage.addSessionsToJson(sessions, "");
     doc["count"] = sessions.size();
     String response; serializeJson(doc, response); sendJson(200, response);
 }
@@ -301,6 +348,11 @@ bool RaceSyncApi::parseSessionIdFromUri(uint32_t& sessionId) const
 
 void RaceSyncApi::handleSessionDownloadById(uint32_t sessionId)
 {
+    if (_logger.recording())
+    {
+        sendJson(423, "{\"error\":\"Session download suspended while recording\",\"racePriorityMode\":true}");
+        return;
+    }
     String filename;
     if (!_storage.findSessionById(sessionId, filename)) { sendJson(404, "{\"error\":\"Session not found\"}"); return; }
     File file = _storage.openRead(filename);
@@ -315,6 +367,11 @@ void RaceSyncApi::handleSessionDownloadById(uint32_t sessionId)
 
 void RaceSyncApi::handleLegacySessionDownload(const String& filename)
 {
+    if (_logger.recording())
+    {
+        sendJson(423, "{\"error\":\"Session download suspended while recording\",\"racePriorityMode\":true}");
+        return;
+    }
     if (!_storage.isSafeVBoxFilename(filename)) { sendJson(400, "{\"error\":\"Invalid session reference\"}"); return; }
     File file = _storage.openRead(filename);
     if (!file) { sendJson(404, "{\"error\":\"Session not found\"}"); return; }
@@ -328,11 +385,16 @@ void RaceSyncApi::handleLegacySessionDownload(const String& filename)
 
 void RaceSyncApi::handleSessionDeleteById(uint32_t sessionId)
 {
+    if (_logger.recording())
+    {
+        sendJson(423, "{\"error\":\"Session deletion suspended while recording\",\"racePriorityMode\":true}");
+        return;
+    }
+
     String filename;
     if (!_storage.findSessionById(sessionId, filename)) {
         JsonDocument doc; doc["error"] = "Session not found"; if (_storage.lastError().length()) doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(404, response); return;
     }
-    if (_logger.recording() && filename == _logger.currentFilename()) { sendJson(409, "{\"error\":\"Cannot delete the active recording\"}"); return; }
 
     String deletedFilename;
     if (!_storage.deleteSessionById(sessionId, deletedFilename)) {
