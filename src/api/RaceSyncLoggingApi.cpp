@@ -1,6 +1,7 @@
 #include "RaceSyncApi.h"
 
 #include <ArduinoJson.h>
+#include "../../include/Pins.h"
 
 void RaceSyncApi::beginManualLoggingRoutes()
 {
