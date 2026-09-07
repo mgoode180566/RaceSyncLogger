@@ -44,8 +44,6 @@ bool parseVBoxCoordinate(const String& line, double& longitude, double& latitude
         return false;
     }
 
-    // RaceSync VBO stores latitude as decimal degrees * 60 and longitude
-    // as decimal degrees * -60 to retain VBOX compatibility.
     latitude = rawLatitude / 60.0;
     longitude = rawLongitude / -60.0;
 
@@ -60,16 +58,17 @@ bool parseVBoxCoordinate(const String& line, double& longitude, double& latitude
 
 void RaceSyncApi::handleSessionKmlDownloadById(uint32_t sessionId)
 {
+    // Never enumerate or read historical files while the primary VBO is active.
+    if (_logger.recording())
+    {
+        sendJson(423, "{\"error\":\"KML generation suspended while recording\",\"racePriorityMode\":true}");
+        return;
+    }
+
     String vboFilename;
     if (!_storage.findSessionById(sessionId, vboFilename))
     {
         sendJson(404, "{\"error\":\"Session not found\"}");
-        return;
-    }
-
-    if (_logger.recording() && _logger.currentFilename() == vboFilename)
-    {
-        sendJson(409, "{\"error\":\"KML cannot be generated while the session is recording\"}");
         return;
     }
 
@@ -116,18 +115,12 @@ void RaceSyncApi::handleSessionKmlDownloadById(uint32_t sessionId)
     {
         String line = vbo.readStringUntil('\n');
         line.trim();
-        if (line.length() == 0)
-        {
-            continue;
-        }
+        if (line.length() == 0) continue;
 
         double longitude;
         double latitude;
         double height;
-        if (!parseVBoxCoordinate(line, longitude, latitude, height))
-        {
-            continue;
-        }
+        if (!parseVBoxCoordinate(line, longitude, latitude, height)) continue;
 
         char coordinate[80];
         const int length = snprintf(
@@ -139,10 +132,7 @@ void RaceSyncApi::handleSessionKmlDownloadById(uint32_t sessionId)
             height
         );
 
-        if (length <= 0 || length >= static_cast<int>(sizeof(coordinate)))
-        {
-            continue;
-        }
+        if (length <= 0 || length >= static_cast<int>(sizeof(coordinate))) continue;
 
         if (chunk.length() + static_cast<size_t>(length) > 960)
         {
@@ -155,11 +145,7 @@ void RaceSyncApi::handleSessionKmlDownloadById(uint32_t sessionId)
         ++points;
     }
 
-    if (chunk.length())
-    {
-        _server.sendContent(chunk);
-    }
-
+    if (chunk.length()) _server.sendContent(chunk);
     vbo.close();
 
     String footer;
@@ -187,6 +173,11 @@ void RaceSyncApi::beginKmlDownloadRoute()
         HTTP_GET,
         [this]()
         {
+            if (_logger.recording())
+            {
+                sendJson(423, "{\"error\":\"KML generation suspended while recording\",\"racePriorityMode\":true}");
+                return;
+            }
             if (!_server.hasArg("id"))
             {
                 sendJson(400, "{\"error\":\"Missing session id\"}");
