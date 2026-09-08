@@ -118,68 +118,134 @@ void RaceSyncSensors::update(Telemetry& telemetry)
     if (!_rpmSignalPresent)
     {
         // Only a genuine loss of tach pulses is allowed to drive the published
-        // RPM to zero. Rejected/noisy readings hold the previous good value.
+        // RPM to zero. Also discard all filter/candidate history so restart is clean.
         _rpm = 0.0;
         _rpmHistoryCount = 0;
         _rpmHistoryIndex = 0;
+        _rpmStepCandidate = 0.0;
+        _rpmStepCandidateCount = 0;
     }
     else if (newAcceptedPulse && measuredRpm > 0.0)
     {
-        bool rejectReading = false;
+        bool acceptReading = true;
+        bool reseedFilter = false;
 
-        // First reject an absolute over-range measurement. Do not convert it
-        // to zero; keep the previous valid RPM until a good pulse arrives.
+        // Absolute over-range measurements are never accepted or used as a
+        // confirmation candidate. Hold the previous good RPM until a valid pulse arrives.
         if (measuredRpm > _rpmMaxValid)
         {
-            rejectReading = true;
+            acceptReading = false;
+            _rpmStepCandidate = 0.0;
+            _rpmStepCandidateCount = 0;
             if (_rpmRejectedReadingCount != UINT32_MAX)
                 ++_rpmRejectedReadingCount;
         }
-
-        // Flag and reject physically implausible one-period excursions once
-        // the engine is already known to be running. These thresholds existed
-        // as diagnostics previously; they now protect the logged RPM trace.
-        if (!rejectReading && _rpm > RPM_DEBUG_MIN_ENGINE_RPM)
+        else if (_rpm > RPM_DEBUG_MIN_ENGINE_RPM)
         {
-            if (measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO)
+            const bool largeLowStep = measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO;
+            const bool largeHighStep = measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO;
+
+            if (largeLowStep || largeHighStep)
             {
-                rejectReading = true;
-                if (_rpmLowSpikeCount != UINT32_MAX) ++_rpmLowSpikeCount;
-                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+                // Do not permanently reject a large step. The first pulse is held
+                // as a candidate. A second pulse that agrees with that candidate
+                // confirms a genuine RPM change and immediately re-seeds the filter.
+                if (largeLowStep)
+                {
+                    if (_rpmLowSpikeCount != UINT32_MAX) ++_rpmLowSpikeCount;
+                }
+                else
+                {
+                    if (_rpmHighSpikeCount != UINT32_MAX) ++_rpmHighSpikeCount;
+                }
+
+                bool agreesWithCandidate = false;
+                if (_rpmStepCandidateCount > 0 && _rpmStepCandidate > 0.0)
+                {
+                    const double difference = measuredRpm > _rpmStepCandidate
+                                                ? measuredRpm - _rpmStepCandidate
+                                                : _rpmStepCandidate - measuredRpm;
+                    const double tolerance = _rpmStepCandidate * RPM_STEP_CONFIRM_TOLERANCE;
+                    agreesWithCandidate = difference <= tolerance;
+                }
+
+                if (agreesWithCandidate)
+                {
+                    if (_rpmStepCandidateCount < UINT8_MAX) ++_rpmStepCandidateCount;
+                }
+                else
+                {
+                    _rpmStepCandidate = measuredRpm;
+                    _rpmStepCandidateCount = 1;
+                }
+
+                if (_rpmStepCandidateCount >= RPM_STEP_CONFIRM_PULSES)
+                {
+                    // Confirmed real step: accept the latest measurement and reset
+                    // the median/EMA history so the old RPM cannot latch the output.
+                    acceptReading = true;
+                    reseedFilter = true;
+                    _rpmStepCandidate = 0.0;
+                    _rpmStepCandidateCount = 0;
+                }
+                else
+                {
+                    acceptReading = false;
+                    if (_rpmRejectedReadingCount != UINT32_MAX)
+                        ++_rpmRejectedReadingCount;
+                }
             }
-            else if (measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO)
+            else
             {
-                rejectReading = true;
-                if (_rpmHighSpikeCount != UINT32_MAX) ++_rpmHighSpikeCount;
-                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+                // A normal reading invalidates any unconfirmed one-pulse excursion.
+                _rpmStepCandidate = 0.0;
+                _rpmStepCandidateCount = 0;
             }
         }
-
-        if (!rejectReading)
+        else
         {
-            _rpmHistory[_rpmHistoryIndex] = measuredRpm;
-            _rpmHistoryIndex = (_rpmHistoryIndex + 1U) % 3U;
-            if (_rpmHistoryCount < 3U) ++_rpmHistoryCount;
+            _rpmStepCandidate = 0.0;
+            _rpmStepCandidateCount = 0;
+        }
 
+        if (acceptReading)
+        {
             double filteredInput = measuredRpm;
-            if (_rpmHistoryCount == 3U)
+
+            if (reseedFilter)
             {
-                filteredInput = medianOfThree(_rpmHistory[0], _rpmHistory[1], _rpmHistory[2]);
+                _rpmHistory[0] = measuredRpm;
+                _rpmHistory[1] = measuredRpm;
+                _rpmHistory[2] = measuredRpm;
+                _rpmHistoryCount = 1;
+                _rpmHistoryIndex = 1;
+                _rpm = measuredRpm;
+            }
+            else
+            {
+                _rpmHistory[_rpmHistoryIndex] = measuredRpm;
+                _rpmHistoryIndex = (_rpmHistoryIndex + 1U) % 3U;
+                if (_rpmHistoryCount < 3U) ++_rpmHistoryCount;
+
+                if (_rpmHistoryCount == 3U)
+                {
+                    filteredInput = medianOfThree(_rpmHistory[0], _rpmHistory[1], _rpmHistory[2]);
+                }
+
+                if (_rpm == 0.0)
+                {
+                    _rpm = filteredInput;
+                }
+                else
+                {
+                    // Update once per accepted pulse, not once per main-loop pass.
+                    // This keeps filter behaviour independent of loop frequency.
+                    _rpm += RPM_FILTER_ALPHA * (filteredInput - _rpm);
+                }
             }
 
             if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
             if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
-
-            if (_rpm == 0.0)
-            {
-                _rpm = filteredInput;
-            }
-            else
-            {
-                // Update once per accepted pulse, not once per main-loop pass.
-                // This keeps filter behaviour independent of loop frequency.
-                _rpm += RPM_FILTER_ALPHA * (filteredInput - _rpm);
-            }
         }
     }
 
