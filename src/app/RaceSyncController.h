@@ -7,6 +7,7 @@
 #include "../logging/RaceSyncLogger.h"
 #include "../gps/RaceSyncGps.h"
 #include "../wifi/RaceSyncWifi.h"
+#include "../sensors/RaceSyncRpmSensor.h"
 #include "../sensors/RaceSyncSensors.h"
 #include "../api/RaceSyncApi.h"
 
@@ -35,6 +36,10 @@ private:
     RaceSyncLogger _logger;
     RaceSyncGps _gps;
     RaceSyncWifi _wifi;
+
+    // Composition root for physical sensors. The controller owns concrete
+    // sensor lifetimes; RaceSyncSensors only coordinates injected references.
+    RaceSyncRpmSensor _rpmSensor;
     RaceSyncSensors _sensors;
 
     Preferences _preferences;
