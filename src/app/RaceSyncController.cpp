@@ -3,7 +3,8 @@
 #include "../config/RaceSyncConfig.h"
 
 RaceSyncController::RaceSyncController()
-    : _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
+    : _sensors(_rpmSensor),
+      _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
 {
 }
 
