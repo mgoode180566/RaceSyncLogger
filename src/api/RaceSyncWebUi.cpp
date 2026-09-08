@@ -1,99 +1,20 @@
 #include "RaceSyncApi.h"
+#include "../ui/RaceSyncUiPages.h"
 
-namespace {
-const char RACESYNC_UI[] PROGMEM = R"HTML(<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RaceSync</title><style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}*{box-sizing:border-box}body{margin:0}.wrap{max-width:920px;margin:auto;padding:18px}.head,.bar,.session,.priority{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:16px;margin-bottom:12px}.head{display:flex;justify-content:space-between;align-items:center}.brand{font-size:26px;font-weight:800}.sub,.meta{color:#9ba8b4;font-size:13px}.status{font-size:13px;text-align:right}.ok{color:#75d69c}.warn{color:#ffca6b}.bar{display:flex;gap:10px;justify-content:space-between;align-items:center}.btn{border:0;border-radius:8px;padding:10px 13px;font-weight:700;cursor:pointer;background:#e9eef2;color:#111;text-decoration:none;display:inline-block}.primary{background:#54bdf5}.ghost{background:#303a43;color:#fff}.session{display:grid;grid-template-columns:1fr auto;gap:12px}.title{font-weight:750;font-size:16px}.timing{display:grid;grid-template-columns:repeat(4,minmax(100px,1fr));gap:8px;margin-top:10px}.timing div{background:#12181d;border-radius:8px;padding:8px}.timing b{display:block;font-size:11px;color:#87939e;margin-bottom:3px}.new{display:inline-block;background:#54bdf5;color:#071018;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:800;margin-right:7px}.flag{font-size:15px;margin-right:7px}.actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.empty{text-align:center;color:#9ba8b4;padding:35px}.priority{text-align:center;border-color:#8d6c1d}.priority strong{display:block;font-size:22px;color:#ffca6b;margin-bottom:6px}.foot{color:#87939e;font-size:12px;text-align:center;padding:12px}.nav{margin-top:10px;display:flex;gap:14px;flex-wrap:wrap}.nav a{color:#54bdf5;text-decoration:none;font-size:13px}@media(max-width:650px){.session{grid-template-columns:1fr}.actions .btn{flex:1}.bar{align-items:stretch;flex-direction:column}.head{align-items:flex-start}.status{text-align:left;margin-top:10px}.timing{grid-template-columns:1fr 1fr}}
-</style></head><body><main class="wrap">
-<div class="head"><div><div class="brand">RaceSync</div><div class="sub">Motorcycle Data Logger</div><div class="nav"><a href="/control">Logging Control & Settings</a><a href="/status">Device Status</a></div></div><div class="status"><div id="gps">GPS ...</div><div id="sd">Storage ...</div><div id="rpm">RPM ...</div><div id="log">Logger ...</div></div></div>
-<div id="priority" class="priority" style="display:none"><strong>● RECORDING</strong><div id="priorityText">Race-priority mode active</div></div>
-<div id="sessionArea"><div class="bar"><div><strong>Stored Sessions</strong><div class="sub" id="summary">Loading...</div></div><button class="btn primary" id="all" onclick="downloadAllNew()">Download All New</button></div><div id="sessions"></div></div>
-<div class="foot" id="footer">RaceSync</div></main>
-<script>
-const key='racesync_downloaded_sessions';let sessions=[],wasRecording=false;const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function downloaded(){try{return new Set(JSON.parse(localStorage.getItem(key)||'[]').map(String))}catch(e){return new Set()}}
-function mark(id){const s=downloaded();s.add(String(id));localStorage.setItem(key,JSON.stringify([...s]));render()}
-function fmt(n){if(n==null)return '';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';return (n/1048576).toFixed(1)+' MB'}
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]))}
-function parts(file){const m=String(file).match(/^RS_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.vbo$/i);return m?{y:+m[1],mo:+m[2],d:+m[3],h:+m[4],mi:+m[5],s:+m[6]}:null}
-function stamp(s){if(s.startTime&&/^\d{4}-/.test(s.startTime)){const t=Date.parse(s.startTime);if(Number.isFinite(t))return t}const p=parts(s.file);return p?Date.UTC(p.y,p.mo-1,p.d,p.h,p.mi,p.s):0}
-function sortSessions(list){return [...list].sort((a,b)=>stamp(b)-stamp(a)||String(b.file).localeCompare(String(a.file)))}
-function fallbackStart(file){const p=parts(file);if(!p)return {date:'Unknown',time:'—'};return {date:String(p.d).padStart(2,'0')+' '+months[p.mo-1]+' '+p.y,time:String(p.h).padStart(2,'0')+':'+String(p.mi).padStart(2,'0')+':'+String(p.s).padStart(2,'0')}}
-function dt(v){if(!v)return null;const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);if(!m)return null;return {date:m[3]+' '+months[Number(m[2])-1]+' '+m[1],time:m[4]+':'+m[5]+':'+m[6]}}
-function elapsed(sec){if(sec==null||!Number.isFinite(Number(sec)))return '—';sec=Math.max(0,Math.round(Number(sec)));const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return (h?h+'h ':'')+(m?m+'m ':'')+s+'s'}
-function render(){const seen=downloaded(),box=document.getElementById('sessions');const complete=sessions.filter(s=>s.complete),fresh=complete.filter(s=>!seen.has(String(s.id)));document.getElementById('summary').textContent=complete.length+' sessions · '+fresh.length+' new · newest first';document.getElementById('all').disabled=!fresh.length;box.innerHTML=sessions.length?'':'<div class="empty">No stored sessions</div>';sessions.forEach(s=>{const isNew=!seen.has(String(s.id))&&s.complete,start=dt(s.startTime)||fallbackStart(s.file),end=dt(s.endTime),d=document.createElement('div');d.className='session';d.innerHTML='<div><div class="title">'+(s.successful?'<span class="flag" title="Completed recording">🏁</span>':'')+(isNew?'<span class="new">NEW</span>':'')+esc(s.file)+'</div><div class="timing"><div><b>DATE</b>'+esc(start.date)+'</div><div><b>START</b>'+esc(start.time)+'</div><div><b>END</b>'+esc(end?end.time:'—')+'</div><div><b>ELAPSED</b>'+esc(elapsed(s.elapsedSeconds))+'</div></div><div class="meta" style="margin-top:8px">'+fmt(s.sizeBytes)+'</div></div><div class="actions"><button class="btn primary">Download VBO</button>'+(s.hasKml?'<button class="btn ghost">Generate KML</button>':'')+'</div>';const b=d.querySelectorAll('button');let i=0;b[i++].onclick=()=>dl(s.downloadUrl,s.id);if(s.hasKml)b[i++].onclick=()=>dl(s.kmlDownloadUrl,s.id);box.appendChild(d)})}
-function dl(url,id){const a=document.createElement('a');a.href=url;a.click();mark(id)}
-function downloadAllNew(){const seen=downloaded(),fresh=sessions.filter(s=>s.complete&&!seen.has(String(s.id)));fresh.forEach((s,i)=>setTimeout(()=>dl(s.downloadUrl,s.id),i*600))}
-async function loadSessions(){const r=await fetch('/api/session-summaries',{cache:'no-store'});if(!r.ok)return;sessions=sortSessions((await r.json()).sessions||[]);render()}
-async function tick(){try{const rr=await fetch('/api/runtime',{cache:'no-store'}),r=await rr.json(),rec=!!r.recording;document.getElementById('gps').innerHTML='<span class="'+(r.gpsValid?'ok':'warn')+'">●</span> GPS '+(r.gpsValid?'READY':'WAITING');document.getElementById('sd').innerHTML='<span class="'+(r.storageReady?'ok':'warn')+'">●</span> '+(r.storageReady?'STORAGE READY':'STORAGE ERROR');document.getElementById('rpm').textContent='RPM '+Math.max(0,Math.round(Number(r.rpm||0))).toLocaleString();document.getElementById('log').textContent=rec?'● RECORDING':'Logger idle';document.getElementById('priority').style.display=rec?'block':'none';document.getElementById('sessionArea').style.display=rec?'none':'block';if(rec){document.getElementById('priorityText').innerHTML=(r.manual?'Manual test session · <a href="/control" style="color:#54bdf5">Stop available in Control</a>':'Automatic race session · web storage activity suspended')+' · '+elapsed(r.recordingSeconds);document.getElementById('footer').textContent='Race-priority mode · VBO logging has precedence';}else{document.getElementById('footer').textContent='RaceSync';if(wasRecording||!sessions.length)await loadSessions()}wasRecording=rec}catch(e){document.getElementById('log').textContent='Logger offline'}}
-tick();setInterval(tick,2000);
-</script></body></html>)HTML";
-
-const char RACESYNC_STATUS_UI[] PROGMEM = R"HTML(<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RaceSync Device Status</title><style>:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}body{margin:0}.wrap{max-width:1050px;margin:auto;padding:18px}.panel{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:16px;margin-bottom:12px}.btn{display:inline-block;border-radius:8px;padding:9px 12px;font-weight:700;background:#303a43;color:#fff;text-decoration:none}.sub{color:#9ba8b4;font-size:13px}pre{white-space:pre-wrap;word-break:break-word;color:#dbe7ef}</style></head><body><main class="wrap"><div class="panel"><h2 style="margin-top:0">RaceSync Device Status</h2><a class="btn" href="/">Sessions</a> <a class="btn" href="/control">Control</a></div><div class="panel"><div id="mode">Loading...</div><pre id="status"></pre></div></main><script>async function load(){try{const rr=await fetch('/api/runtime',{cache:'no-store'}),r=await rr.json();if(r.recording){document.getElementById('mode').textContent='RECORDING — lightweight status only';document.getElementById('status').textContent=JSON.stringify(r,null,2);return}const [s,t]=await Promise.all([fetch('/api/status',{cache:'no-store'}),fetch('/api/telemetry',{cache:'no-store'})]);document.getElementById('mode').textContent='IDLE — full diagnostics';document.getElementById('status').textContent=JSON.stringify({status:await s.json(),telemetry:await t.json()},null,2)}catch(e){document.getElementById('status').textContent='Unable to read status'}}load();setInterval(load,2000)</script></body></html>)HTML";
-
-const char RACESYNC_CONTROL_UI[] PROGMEM = R"HTML(<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RaceSync Control</title><style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#f4f6f8;background:#101418}*{box-sizing:border-box}body{margin:0}.wrap{max-width:940px;margin:auto;padding:18px}.panel{background:#192027;border:1px solid #2a343d;border-radius:12px;padding:18px;margin-bottom:14px}.head,.sectionHead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.title{font-size:25px;font-weight:800}.nav{display:flex;gap:12px;flex-wrap:wrap}.link{color:#54bdf5;text-decoration:none}.sectionHead{margin-bottom:14px}.sectionHead h3{margin:0;font-size:18px}.help{color:#9ba8b4;font-size:13px;line-height:1.45;max-width:570px}.grid2,.grid3{display:grid;gap:10px}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.card,.field{background:#12181d;border:1px solid #242f38;border-radius:10px;padding:12px}.label{display:block;color:#87939e;font-size:11px;font-weight:800;letter-spacing:.04em;margin-bottom:5px}.value{font-size:18px;font-weight:800}.rpmValue{font-size:34px;font-weight:850}.ok{color:#75d69c}.warn{color:#ffca6b}.bad{color:#ff8c8c}.btn,input{border:0;border-radius:9px;padding:11px;font-size:15px}.btn{font-weight:800;cursor:pointer;margin:4px 5px 4px 0}.btn:disabled,input:disabled{opacity:.45;cursor:not-allowed}.start{background:#75d69c;color:#07150c}.stop{background:#e76b6b;color:#190707}.save{background:#54bdf5;color:#071018}.reboot{background:#ffca6b;color:#171005}.secondary{background:#303a43;color:#fff}.field input{width:100%;margin-top:7px;background:#eef2f5;color:#111}.note{color:#87939e;font-size:12px;line-height:1.4;margin-top:7px}.actions{margin-top:14px}.notice{margin-top:10px;padding:10px 12px;border-radius:8px;background:#12181d;color:#9ba8b4;font-size:13px;min-height:39px}.toggleRow{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#12181d;border:1px solid #242f38;border-radius:10px;padding:13px;margin-top:12px}.toggleRow input{width:21px;height:21px}.small{font-size:12px;color:#87939e}.live{display:flex;align-items:center;gap:8px;margin:0 0 12px;color:#9ba8b4;font-size:12px}.dot{width:9px;height:9px;border-radius:50%;background:#75d69c;display:inline-block}.event{transition:border-color .15s,background .15s}.event.hit{border-color:#e76b6b;background:#2b1719}.delta{font-size:12px;color:#ffca6b;margin-left:6px}.dangerPanel{border-color:#5c4620}.shiftWrap{background:#080b0e;border:1px solid #29343d;border-radius:12px;padding:14px;margin:10px 0 16px}.shiftBar{display:grid;grid-template-columns:repeat(14,1fr);gap:7px}.shiftLed{height:30px;border-radius:5px;background:#20262b;box-shadow:inset 0 0 0 1px #303a42;transition:background .08s,box-shadow .08s}.shiftLed.green{background:#39d353;box-shadow:0 0 12px #39d353}.shiftLed.yellow{background:#ffd33d;box-shadow:0 0 12px #ffd33d}.shiftLed.red{background:#ff4d4f;box-shadow:0 0 14px #ff4d4f}.shiftWrap.over{border-color:#ff4d4f;box-shadow:0 0 14px rgba(255,77,79,.35)}.shiftMeta{display:flex;justify-content:space-between;gap:12px;margin-top:9px;color:#87939e;font-size:12px}@media(max-width:700px){.head,.sectionHead{flex-direction:column}.grid2,.grid3{grid-template-columns:1fr}.wrap{padding:12px}.shiftBar{gap:4px}.shiftLed{height:24px}}
-</style></head><body><main class="wrap">
-<div class="panel"><div class="head"><div><div class="title">RaceSync Control & Settings</div><div class="help">Configure logging and bench-test the RPM pickup. RPM diagnostics use RAM only and remain visible whether the logger is idle or recording.</div></div><div class="nav"><a class="link" href="/">Sessions</a><a class="link" href="/status">Device Status</a></div></div></div>
-
-<div class="panel"><div class="sectionHead"><h3>Current status</h3><div class="help">Before riding, confirm GPS and storage are ready. Automatic logging will not arm until GPS data is valid.</div></div><div class="grid2"><div class="card"><span class="label">LOGGER</span><span class="value" id="state">Loading...</span></div><div class="card"><span class="label">GPS</span><span class="value" id="gpsState">Checking...</span><div class="small" id="gpsDetail"></div></div><div class="card"><span class="label">STORAGE</span><span class="value" id="storageState">Checking...</span></div><div class="card"><span class="label">ENGINE SPEED</span><span class="rpmValue" id="rpmTop">--</span><span class="small"> rpm</span></div></div><div id="details" class="small" style="margin-top:10px"></div></div>
-
-<div class="panel"><div class="sectionHead"><h3>Manual logging</h3><div class="help">For stationary bench tests and sensor checks. A valid GPS fix is required to create a session. Manual sessions can be stopped here.</div></div><button class="btn start" id="start" onclick="startManual()">Start Manual Logging</button><button class="btn stop" id="stop" onclick="stopManual()">Stop Manual Logging</button><div id="notice" class="notice">Ready.</div></div>
-
-<div class="panel"><div class="sectionHead"><h3>Automatic race logging</h3><div class="help">Recording starts from GPS movement and ends after the stationary delay. These controls are locked while recording.</div></div><div class="grid2"><label class="field"><span class="label">START SPEED (KM/H)</span><input id="speed" type="number" min="1" max="100" step="0.5"><div class="note">Speed must reach this value after GPS validity, freshness and satellite checks pass.</div></label><label class="field"><span class="label">STOP DELAY (SECONDS)</span><input id="delay" type="number" min="1" max="600"><div class="note">Time below the fixed stop-speed threshold before RaceSync closes the file.</div></label></div><div class="actions"><button class="btn save" id="save" onclick="saveSettings()">Save Automatic Logging Settings</button></div></div>
-
-<div class="panel"><div class="sectionHead"><h3>RPM pickup — live debug</h3><div class="help">Use this section while testing the ECU tachometer feed and optocoupler. It works with logging stopped or running. Counters marked “since page opened” make brief faults easy to spot.</div></div><div class="live"><span class="dot"></span><span id="pollRate">Live RAM diagnostics</span></div>
-<div class="shiftWrap" id="shiftWrap"><div class="shiftBar" id="shiftBar"></div><div class="shiftMeta"><span>Green → yellow as RPM rises</span><span id="shiftLimitLabel">Limit -- rpm</span></div></div>
-<div class="grid3">
-<div class="card"><span class="label">FILTERED RPM</span><span class="rpmValue" id="rpmFiltered">--</span><div class="note">The RPM value written to telemetry/VBO.</div></div>
-<div class="card"><span class="label">RAW CALCULATED RPM</span><span class="value" id="rpmRaw">--</span><div class="note">Latest single pulse-period calculation before smoothing.</div></div>
-<div class="card"><span class="label">SIGNAL</span><span class="value" id="rpmSignal">Unknown</span><div class="small" id="rpmPulseAge"></div></div>
-<div class="card"><span class="label">INPUT LEVEL</span><span class="value" id="rpmInput">--</span><div class="small" id="rpmPin"></div></div>
-<div class="card"><span class="label">ACCEPTED PULSES</span><span class="value" id="rpmPulses">--</span><div class="note">Accepted falling edges from the tach input.</div></div>
-<div class="card"><span class="label">LAST PULSE PERIOD</span><span class="value" id="rpmPeriod">--</span><div class="note">Microseconds between the latest accepted pulses.</div></div>
-</div>
-<div class="grid2" style="margin-top:10px"><label class="field"><span class="label">MAX VALID RPM</span><input id="rpmLimit" type="number" min="1000" max="30000" step="100"><div class="note">Default 11,000 RPM for the CB500. Change this for another bike. Raw readings above this value are rejected and shown as red on the LED strip.</div></label><div class="card"><span class="label">CURRENT FILTER LIMIT</span><span class="value" id="rpmLimitLive">--</span><div class="note">The limit currently being applied by the RPM filter.</div></div></div><div class="actions"><button class="btn save" id="saveRpmLimit" onclick="saveRpmLimitSetting()">Save RPM Limit</button></div>
-<h4 style="margin:18px 0 10px">Spike / dropout detection</h4><div class="grid3">
-<div class="card event" id="zeroCard"><span class="label">ZERO / SIGNAL DROPS</span><span class="value" id="rpmZero">0</span><span class="delta" id="rpmZeroDelta"></span><div class="note">Counts actual filtered-RPM transitions to zero from above 1,000 RPM. This indicates a zero that could reach telemetry/VBO.</div></div>
-<div class="card event" id="lowCard"><span class="label">LOW SPIKES</span><span class="value" id="rpmLow">0</span><span class="delta" id="rpmLowDelta"></span><div class="note">Accepted raw RPM less than 50% of the current filtered RPM while above 1,000 RPM.</div></div>
-<div class="card event" id="highCard"><span class="label">HIGH SPIKES</span><span class="value" id="rpmHigh">0</span><span class="delta" id="rpmHighDelta"></span><div class="note">Accepted raw RPM more than 150% of the current filtered RPM but still below the configured maximum.</div></div>
-<div class="card event" id="overCard"><span class="label">OVER-RANGE REJECTS</span><span class="value" id="rpmRejected">0</span><span class="delta" id="rpmRejectedDelta"></span><div class="note">Calculated readings above the configured RPM limit are rejected by the filter.</div></div>
-<div class="card event" id="pulseRejectCard"><span class="label">SHORT-PULSE REJECTS</span><span class="value" id="rpmRejectedPulses">0</span><span class="delta" id="rpmRejectedPulsesDelta"></span><div class="note">Input edges closer than 1.5 ms, normally electrical chatter/noise, rejected in the interrupt handler.</div></div>
-<div class="card"><span class="label">ACCEPTED RANGE</span><span class="value" id="rpmRange">--</span><div class="note">Minimum and maximum accepted raw RPM seen since boot.</div></div>
-</div>
-<label class="toggleRow"><div><strong>Blue RPM activity LED</strong><div class="note">Flashes when RPM input activity is seen. Changing this checkbox saves immediately to NVM. Turning it off does not disable RPM capture.</div></div><input id="rpmLed" type="checkbox" onchange="rpmLedDirty=true;saveRpmLedSetting()"></label><div class="actions"><button class="btn save" id="saveRpmLed" onclick="saveRpmLedSetting()">Save RPM LED Setting</button><button class="btn secondary" onclick="resetDebugBaseline()">Reset Page Baseline</button></div></div>
-
-<div class="panel dangerPanel"><div class="sectionHead"><h3>Restart RaceSync</h3><div class="help">Reboots the ESP32. Disabled while recording so an active session cannot be interrupted.</div></div><button class="btn reboot" id="reboot" onclick="rebootDevice()">Reboot ESP32</button></div>
-</main><script>
-let settingsLoaded=false,rpmSettingsLoaded=false,busy=false,rpmLedDirty=false,rpmLimitDirty=false,baseline=null,lastRuntime=null;const SHIFT_LEDS=14;
-function n(v){return Number(v||0)}function f(v){return Math.max(0,Math.round(n(v))).toLocaleString()}
-function setNotice(text,error=false){const x=document.getElementById('notice');x.textContent=text;x.style.color=error?'#ff8c8c':'#9ba8b4'}
-function initShiftBar(){const b=document.getElementById('shiftBar');if(b.children.length)return;for(let i=0;i<SHIFT_LEDS;i++){const s=document.createElement('span');s.className='shiftLed';b.appendChild(s)}}
-function updateShiftBar(filtered,raw,limit){initShiftBar();limit=Math.max(1000,n(limit)||11000);const leds=[...document.getElementById('shiftBar').children],over=n(raw)>limit;document.getElementById('shiftWrap').classList.toggle('over',over);document.getElementById('shiftLimitLabel').textContent='Limit '+f(limit)+' rpm';if(over){leds.forEach(x=>x.className='shiftLed red');return}const ratio=Math.max(0,Math.min(1,n(filtered)/limit)),lit=Math.ceil(ratio*SHIFT_LEDS);leds.forEach((x,i)=>{x.className='shiftLed';if(i>=lit)return;const p=(i+1)/SHIFT_LEDS;x.classList.add(p<=0.65?'green':'yellow')})}
-async function command(url){if(busy)return;busy=true;try{const r=await fetch(url,{method:'POST'}),x=await r.json();setNotice(r.ok?'Command successful':(x.error||'Command failed'),!r.ok)}catch(e){setNotice('Unable to contact RaceSync',true)}busy=false;await tick()}
-function startManual(){command('/api/logging/start')}function stopManual(){command('/api/logging/stop')}
-async function saveSettings(){if(busy)return;busy=true;try{const r=await fetch('/api/settings/logging',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startSpeedKmh:Number(document.getElementById('speed').value),stopDelaySeconds:Number(document.getElementById('delay').value)})}),x=await r.json();setNotice(r.ok?'Automatic logging settings saved':(x.error||'Unable to save settings'),!r.ok)}catch(e){setNotice('Unable to save settings',true)}busy=false}
-async function saveRpmLimitSetting(){if(busy)return;busy=true;try{const maxValidRpm=Number(document.getElementById('rpmLimit').value),r=await fetch('/api/settings/rpm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxValidRpm})}),x=await r.json();if(r.ok){rpmLimitDirty=false;setNotice('RPM limit saved at '+Math.round(x.maxValidRpm)+' rpm')}else setNotice(x.error||'Unable to save RPM limit',true)}catch(e){setNotice('Unable to save RPM limit',true)}busy=false}
-async function saveRpmLedSetting(){if(busy)return;busy=true;try{const enabled=document.getElementById('rpmLed').checked,r=await fetch('/api/settings/rpm-led',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})}),x=await r.json();if(r.ok){rpmLedDirty=false;setNotice('RPM LED setting saved to NVM')}else setNotice(x.error||'Unable to save RPM LED setting',true)}catch(e){setNotice('Unable to save RPM LED setting',true)}busy=false}
-async function rebootDevice(){if(confirm('Reboot RaceSync now?'))await fetch('/api/reboot',{method:'POST'})}
-function resetDebugBaseline(){if(lastRuntime&&lastRuntime.rpmDiagnostics){baseline={...lastRuntime.rpmDiagnostics};updateDebug(lastRuntime.rpmDiagnostics)}}
-function setEvent(id,total,base,deltaId){const d=Math.max(0,n(total)-n(base));document.getElementById(deltaId).textContent=d?('+'+d+' since page opened'):'';document.getElementById(id).classList.toggle('hit',d>0)}
-function updateDebug(r){if(!baseline)baseline={...r};const limit=n(r.maxValidRpm)||11000;document.getElementById('rpmFiltered').textContent=f(r.value);document.getElementById('rpmRaw').textContent=f(r.rawMeasured);document.getElementById('rpmLimitLive').textContent=f(limit)+' rpm';updateShiftBar(r.value,r.rawMeasured,limit);document.getElementById('rpmSignal').textContent=r.signalPresent?'SIGNAL PRESENT':'NO SIGNAL';document.getElementById('rpmSignal').className='value '+(r.signalPresent?'ok':'warn');document.getElementById('rpmPulseAge').textContent=n(r.lastPulseAgeMs)>=0?'last pulse '+n(r.lastPulseAgeMs)+' ms ago':'no pulse seen';document.getElementById('rpmInput').textContent=r.inputLevel?'HIGH':'LOW';document.getElementById('rpmPin').textContent='GPIO '+(r.inputPin??'—');document.getElementById('rpmPulses').textContent=f(r.pulseCount);document.getElementById('rpmPeriod').textContent=n(r.lastPeriodUs)?f(r.lastPeriodUs)+' µs':'--';document.getElementById('rpmZero').textContent=f(r.zeroDropCount);document.getElementById('rpmLow').textContent=f(r.lowSpikeCount);document.getElementById('rpmHigh').textContent=f(r.highSpikeCount);document.getElementById('rpmRejected').textContent=f(r.rejectedReadingCount);document.getElementById('rpmRejectedPulses').textContent=f(r.rejectedPulseCount);document.getElementById('rpmRange').textContent=(n(r.minAccepted)?f(r.minAccepted):'--')+' – '+(n(r.maxAccepted)?f(r.maxAccepted):'--')+' rpm';setEvent('zeroCard',r.zeroDropCount,baseline.zeroDropCount,'rpmZeroDelta');setEvent('lowCard',r.lowSpikeCount,baseline.lowSpikeCount,'rpmLowDelta');setEvent('highCard',r.highSpikeCount,baseline.highSpikeCount,'rpmHighDelta');setEvent('overCard',r.rejectedReadingCount,baseline.rejectedReadingCount,'rpmRejectedDelta');setEvent('pulseRejectCard',r.rejectedPulseCount,baseline.rejectedPulseCount,'rpmRejectedPulsesDelta');if(!rpmLedDirty)document.getElementById('rpmLed').checked=!!r.ledEnabled;if(!rpmLimitDirty&&limit>0)document.getElementById('rpmLimit').value=Math.round(limit)}
-async function loadSettings(){if(!settingsLoaded){try{const s=await fetch('/api/settings/logging',{cache:'no-store'}),x=await s.json();document.getElementById('speed').value=x.startSpeedKmh;document.getElementById('delay').value=x.stopDelaySeconds;settingsLoaded=true}catch(e){}}if(!rpmSettingsLoaded){try{const s=await fetch('/api/settings/rpm',{cache:'no-store'}),x=await s.json();if(!rpmLimitDirty)document.getElementById('rpmLimit').value=Math.round(x.maxValidRpm||11000);rpmSettingsLoaded=true}catch(e){}}}
-document.getElementById('rpmLimit').addEventListener('input',()=>rpmLimitDirty=true);
-async function tick(){try{const rr=await fetch('/api/runtime',{cache:'no-store'}),r=await rr.json(),rec=!!r.recording,manual=!!r.manual;lastRuntime=r;const rd=r.rpmDiagnostics||{};document.getElementById('state').textContent=rec?(manual?'MANUAL RECORDING':'AUTOMATIC RECORDING'):'IDLE';document.getElementById('state').className='value '+(rec?'warn':'ok');document.getElementById('gpsState').textContent=r.gpsValid?'READY':'WAITING';document.getElementById('gpsState').className='value '+(r.gpsValid?'ok':'warn');document.getElementById('gpsDetail').textContent=(r.satellites??0)+' satellites';document.getElementById('storageState').textContent=r.storageReady&&r.storageWritable?'READY':'NOT READY';document.getElementById('storageState').className='value '+(r.storageReady&&r.storageWritable?'ok':'bad');document.getElementById('rpmTop').textContent=f(r.rpm);document.getElementById('details').textContent=rec?(r.recordingSeconds+' s · '+r.samplesWritten+' samples · '+(manual?'manual':'automatic')+' session'):'Logger idle';document.getElementById('start').disabled=rec||!r.gpsValid||!r.storageReady;document.getElementById('stop').disabled=!(rec&&manual);document.getElementById('save').disabled=rec;document.getElementById('saveRpmLimit').disabled=rec;document.getElementById('saveRpmLed').disabled=rec;document.getElementById('reboot').disabled=rec;document.getElementById('speed').disabled=rec;document.getElementById('delay').disabled=rec;document.getElementById('rpmLimit').disabled=rec;document.getElementById('rpmLed').disabled=rec;document.getElementById('pollRate').textContent=rec?'Live RAM diagnostics · 1 s while recording':'Live RAM diagnostics · 0.5 s while idle';if(rec&&!manual)setNotice('Race-priority mode: automatic session cannot be stopped or reconfigured from the web UI. RPM diagnostics remain available.');updateDebug(rd);if(!rec)await loadSettings();setTimeout(tick,rec?1000:500)}catch(e){document.getElementById('state').textContent='OFFLINE';setTimeout(tick,1000)}}
-initShiftBar();tick();
-</script></body></html>)HTML";
-
+namespace
+{
 void addSessionMetadata(RaceSyncStorage& storage, JsonObject session)
 {
     const String filename = session["file"].as<String>();
     String logFilename = filename;
     if (logFilename.endsWith(".vbo")) logFilename.replace(".vbo", ".log");
-    String startTime, endTime;
+
+    String startTime;
+    String endTime;
     long elapsedSeconds = -1;
-    bool finalized = false, metadataFound = false;
+    bool finalized = false;
+    bool metadataFound = false;
+
     File log = storage.openFileRead(logFilename);
     if (log)
     {
@@ -104,7 +25,10 @@ void addSessionMetadata(RaceSyncStorage& storage, JsonObject session)
             line.trim();
             const int eq = line.indexOf('=');
             if (eq <= 0) continue;
-            const String key = line.substring(0, eq), value = line.substring(eq + 1);
+
+            const String key = line.substring(0, eq);
+            const String value = line.substring(eq + 1);
+
             if (key == "startTime") startTime = value;
             else if (key == "endTime") endTime = value;
             else if (key == "durationSeconds") elapsedSeconds = value.toInt();
@@ -112,31 +36,52 @@ void addSessionMetadata(RaceSyncStorage& storage, JsonObject session)
         }
         log.close();
     }
+
     session["metadataAvailable"] = metadataFound;
     if (startTime.length()) session["startTime"] = startTime;
     if (endTime.length()) session["endTime"] = endTime;
     if (elapsedSeconds >= 0) session["elapsedSeconds"] = elapsedSeconds;
     session["successful"] = session["complete"].as<bool>() && (!metadataFound || finalized);
 }
+
+void sendUiPage(WebServer& server, const char* page)
+{
+    server.sendHeader("Cache-Control", "no-store");
+    server.send_P(200, "text/html", page);
+}
 }
 
 void RaceSyncApi::beginWebUiRoute()
 {
-    _server.on("/", HTTP_GET, [this]() { _server.sendHeader("Cache-Control", "no-store"); _server.send_P(200, "text/html", RACESYNC_UI); });
-    _server.on("/status", HTTP_GET, [this]() { _server.sendHeader("Cache-Control", "no-store"); _server.send_P(200, "text/html", RACESYNC_STATUS_UI); });
-    _server.on("/control", HTTP_GET, [this]() { _server.sendHeader("Cache-Control", "no-store"); _server.send_P(200, "text/html", RACESYNC_CONTROL_UI); });
+    _server.on("/", HTTP_GET, [this]() {
+        sendUiPage(_server, RACESYNC_SESSIONS_UI);
+    });
+
+    _server.on("/status", HTTP_GET, [this]() {
+        sendUiPage(_server, RACESYNC_STATUS_UI);
+    });
+
+    _server.on("/control", HTTP_GET, [this]() {
+        sendUiPage(_server, RACESYNC_CONTROL_UI);
+    });
 
     _server.on("/api/session-summaries", HTTP_GET, [this]() {
-        if (_logger.recording()) {
+        if (_logger.recording())
+        {
             sendJson(423, "{\"error\":\"Session access suspended while recording\",\"racePriorityMode\":true}");
             return;
         }
+
         JsonDocument doc;
         doc["device"] = "RaceSync";
         JsonArray sessions = doc["sessions"].to<JsonArray>();
         _storage.addSessionsToJson(sessions, "");
-        for (JsonObject session : sessions) addSessionMetadata(_storage, session);
+        for (JsonObject session : sessions)
+        {
+            addSessionMetadata(_storage, session);
+        }
         doc["count"] = sessions.size();
+
         String response;
         serializeJson(doc, response);
         sendJson(200, response);
