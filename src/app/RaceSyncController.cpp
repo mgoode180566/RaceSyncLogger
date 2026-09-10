@@ -4,7 +4,7 @@
 
 RaceSyncController::RaceSyncController()
     : _sensors(_rpmSensor),
-      _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
+      _api(_storage, _logger, _gps, _wifi, _goPro, _telemetry, _mode, _bootCount)
 {
 }
 
@@ -250,6 +250,11 @@ void RaceSyncController::begin()
     _api.beginSettingsRoutes();
     _api.begin();
 
+    // BLE work runs on a separate low-priority task and is automatically
+    // suspended whenever the primary VBO logger is recording.
+    if (_goPro.begin()) Serial.println("[GOPRO] BLE status task ready");
+    else Serial.println("[GOPRO] BLE status task failed to start");
+
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
     _loggingLedCycleStartedMs = 0;
@@ -292,6 +297,7 @@ void RaceSyncController::update()
     }
 
     updateLoggingLed();
+    _goPro.setRacePriorityMode(_logger.recording());
     _api.update();
     delay(1);
 }

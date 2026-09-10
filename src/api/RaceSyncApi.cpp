@@ -10,10 +10,11 @@ RaceSyncApi::RaceSyncApi(
     RaceSyncLogger& logger,
     RaceSyncGps& gps,
     RaceSyncWifi& wifi,
+    RaceSyncGoPro& goPro,
     Telemetry& telemetry,
     DataMode& mode,
     uint32_t& bootCount)
-    : _storage(storage), _logger(logger), _gps(gps), _wifi(wifi),
+    : _storage(storage), _logger(logger), _gps(gps), _wifi(wifi), _goPro(goPro),
       _telemetry(telemetry), _mode(mode), _bootCount(bootCount)
 {
 }
@@ -111,6 +112,12 @@ void RaceSyncApi::handleStatus()
         logger["recordingSeconds"] = _logger.recordingSeconds();
         uint32_t writeAge = _logger.lastWriteAgeMs();
         logger["lastWriteAgeMs"] = writeAge == UINT32_MAX ? -1 : (int64_t)writeAge;
+
+        JsonObject camera = doc["camera"].to<JsonObject>();
+        camera["type"] = "GoPro HERO9";
+        camera["state"] = "SUSPENDED";
+        camera["connected"] = false;
+        camera["ioSuppressedForRace"] = true;
 
         String response;
         serializeJson(doc, response);
@@ -244,6 +251,32 @@ void RaceSyncApi::handleStatus()
     power["source"] = "EXTERNAL";
     power["voltageMonitoring"] = false;
     power["batteryPercentageAvailable"] = false;
+
+    GoProStatus goPro = _goPro.status();
+    JsonObject camera = doc["camera"].to<JsonObject>();
+    camera["type"] = "GoPro HERO9";
+    camera["transport"] = "BLE";
+    camera["enabled"] = goPro.enabled;
+    camera["state"] = goPro.state;
+    camera["scanning"] = goPro.scanning;
+    camera["discovered"] = goPro.discovered;
+    camera["connected"] = goPro.connected;
+    camera["name"] = goPro.name;
+    camera["address"] = goPro.address;
+    camera["rssi"] = goPro.rssi;
+    camera["statusValid"] = goPro.statusValid;
+    camera["recording"] = goPro.recording;
+    camera["busy"] = goPro.busy;
+    camera["ready"] = goPro.ready;
+    camera["overheating"] = goPro.overheating;
+    camera["sdCardError"] = goPro.sdCardError;
+    camera["batteryPercent"] = goPro.batteryPercent;
+    camera["remainingVideoSeconds"] = goPro.remainingVideoSeconds;
+    camera["lastStatusAgeMs"] = goPro.lastStatusAgeMs == UINT32_MAX ? -1 : static_cast<int64_t>(goPro.lastStatusAgeMs);
+    camera["connectionAttempts"] = goPro.connectionAttempts;
+    camera["successfulQueries"] = goPro.successfulQueries;
+    camera["queryErrors"] = goPro.queryErrors;
+    camera["lastError"] = goPro.lastError;
 
     JsonObject health = doc["health"].to<JsonObject>();
     health["system"] = "OK";

@@ -8,6 +8,7 @@
 #include "../logging/RaceSyncLogger.h"
 #include "../gps/RaceSyncGps.h"
 #include "../wifi/RaceSyncWifi.h"
+#include "../camera/RaceSyncGoPro.h"
 
 class RaceSyncApi
 {
@@ -17,6 +18,7 @@ public:
         RaceSyncLogger& logger,
         RaceSyncGps& gps,
         RaceSyncWifi& wifi,
+        RaceSyncGoPro& goPro,
         Telemetry& telemetry,
         DataMode& mode,
         uint32_t& bootCount
@@ -35,6 +37,7 @@ private:
     RaceSyncLogger& _logger;
     RaceSyncGps& _gps;
     RaceSyncWifi& _wifi;
+    RaceSyncGoPro& _goPro;
     Telemetry& _telemetry;
     DataMode& _mode;
     uint32_t& _bootCount;

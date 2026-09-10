@@ -23,6 +23,7 @@ This document describes the `reliability/recording-priority-mode` branch.
 - Recording-priority web/API behaviour that suppresses unnecessary SD access while recording
 - Live RPM diagnostics and saved RPM blue-LED preference
 - KML generation on demand only
+- Non-blocking GoPro HERO9 BLE discovery, connection and camera-status reporting
 - Five-part startup diagnostics
 
 ## Proven race use
@@ -176,6 +177,23 @@ After unexpected power loss, the next boot scans `.part` files, retains newline-
 Recovery can preserve complete records that reached the card; it cannot recreate samples that were never written.
 
 ## Web interface
+
+### GoPro HERO9 status
+
+RaceSync scans for an advertising camera named `GoPro XXXX`, connects over BLE
+using the official Open GoPro service, and polls recording, ready/busy,
+overheating, battery, remaining-video and SD-error status. The result is exposed
+as the `camera` object in `GET /api/status` and therefore appears on the device
+status page.
+
+On the HERO9, enable wireless connections and place the camera in pairing mode
+for the first connection. HERO9 firmware 1.60 or newer is required for Open
+GoPro support.
+
+GoPro work is performed by a low-priority task on core 0. When RaceSync begins
+recording, the camera task disconnects and reports `SUSPENDED`; it performs no
+BLE scanning, connection or status polling until recording has stopped. A
+missing or unresponsive camera can never prevent VBO logging.
 
 ```text
 SSID:     RaceSync
