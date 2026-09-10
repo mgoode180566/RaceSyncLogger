@@ -6,7 +6,7 @@ RaceSyncGoPro* RaceSyncGoPro::_instance = nullptr;
 
 namespace
 {
-bool isGoPro(const NimBLEAdvertisedDevice& device)
+bool isGoPro(NimBLEAdvertisedDevice& device)
 {
     if (!device.haveName()) return false;
     const std::string name = device.getName();
@@ -124,34 +124,27 @@ bool RaceSyncGoPro::discoverAndConnect()
         return false;
     }
 
-    NimBLEAdvertisedDevice* camera = nullptr;
     for (int i = 0; i < results.getCount(); ++i)
     {
-        NimBLEAdvertisedDevice* candidate = results.getDevice(i);
-        if (candidate != nullptr && isGoPro(*candidate))
+        NimBLEAdvertisedDevice candidate = results.getDevice(i);
+        if (isGoPro(candidate))
         {
-            camera = candidate;
-            break;
+            portENTER_CRITICAL(&_statusMux);
+            _status.discovered = true;
+            _status.rssi = candidate.getRSSI();
+            snprintf(_status.name, sizeof(_status.name), "%s", candidate.getName().c_str());
+            snprintf(_status.address, sizeof(_status.address), "%s", candidate.getAddress().toString().c_str());
+            portEXIT_CRITICAL(&_statusMux);
+
+            const bool connected = configureConnection(&candidate);
+            scan->clearResults();
+            return connected;
         }
     }
 
-    if (camera == nullptr)
-    {
-        setState("NOT_FOUND", "No advertising GoPro found");
-        scan->clearResults();
-        return false;
-    }
-
-    portENTER_CRITICAL(&_statusMux);
-    _status.discovered = true;
-    _status.rssi = camera->getRSSI();
-    snprintf(_status.name, sizeof(_status.name), "%s", camera->getName().c_str());
-    snprintf(_status.address, sizeof(_status.address), "%s", camera->getAddress().toString().c_str());
-    portEXIT_CRITICAL(&_statusMux);
-
-    const bool connected = configureConnection(camera);
+    setState("NOT_FOUND", "No advertising GoPro found");
     scan->clearResults();
-    return connected;
+    return false;
 }
 
 bool RaceSyncGoPro::configureConnection(NimBLEAdvertisedDevice* device)

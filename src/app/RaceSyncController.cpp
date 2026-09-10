@@ -19,7 +19,7 @@ void RaceSyncController::incrementBootCount()
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
 #if defined(RGB_BUILTIN)
-    rgbLedWrite(RGB_BUILTIN, red, green, blue);
+    neopixelWrite(RGB_BUILTIN, red, green, blue);
 #elif defined(LED_BUILTIN)
     digitalWrite(LED_BUILTIN, (red || green || blue) ? HIGH : LOW);
 #else

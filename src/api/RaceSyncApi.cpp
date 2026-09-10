@@ -366,7 +366,7 @@ void RaceSyncApi::handleSessions()
     String response; serializeJson(doc, response); sendJson(200, response);
 }
 
-bool RaceSyncApi::parseSessionIdFromUri(uint32_t& sessionId) const
+bool RaceSyncApi::parseSessionIdFromUri(uint32_t& sessionId)
 {
     sessionId = 0;
     const String prefix = "/api/sessions/";

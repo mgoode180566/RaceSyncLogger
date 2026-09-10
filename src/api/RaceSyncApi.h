@@ -32,7 +32,7 @@ public:
     void update();
 
 private:
-    WebServer _server = WebServer(80);
+    WebServer _server{80};
     RaceSyncStorage& _storage;
     RaceSyncLogger& _logger;
     RaceSyncGps& _gps;
@@ -52,7 +52,7 @@ private:
     void handleSessionKmlDownloadById(uint32_t sessionId);
     void handleSessionDeleteById(uint32_t sessionId);
     void handleLegacySessionDownload(const String& filename);
-    bool parseSessionIdFromUri(uint32_t& sessionId) const;
+    bool parseSessionIdFromUri(uint32_t& sessionId);
     static String formatUptime();
     static String formatVBoxTime(double rawTime);
     static const char* resetReasonName();
