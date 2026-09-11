@@ -6,7 +6,7 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `feature/manual-gopro-bluetooth` branch.
+This document describes the `feature/manual-gopro-video-start` branch.
 
 ## Current functionality
 
@@ -190,10 +190,16 @@ On the HERO9, enable wireless connections and place the camera in pairing mode
 for the first connection. HERO9 firmware 1.60 or newer is required for Open
 GoPro support.
 
-There is no background camera task, automatic scan, polling or connection.
-Camera commands are rejected while RaceSync is recording. This branch is for
-bench-testing manual BLE stability; it does not start or stop video when a VBO
-session starts. Disconnect the camera before riding.
+There is no background scan, polling or automatic connection. Connect the GoPro
+manually before starting a bench session. After manual VBO logging has started,
+RaceSync queues the official BLE shutter-on command on a low-priority one-shot
+task. Logging never waits for the camera, and camera failure cannot roll back or
+stop the VBO session. The manual logging response and camera status report
+whether the video-start command was queued and confirmed.
+
+This stage starts video only. Stopping manual logging does not yet stop the
+GoPro; stop the video on the camera itself. Automatic speed-triggered camera
+control remains intentionally unimplemented.
 
 ```text
 SSID:     RaceSync

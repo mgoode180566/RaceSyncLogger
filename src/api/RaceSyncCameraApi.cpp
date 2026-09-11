@@ -30,6 +30,11 @@ void RaceSyncApi::handleCameraStatus(int httpStatus)
     doc["connectionAttempts"] = camera.connectionAttempts;
     doc["successfulQueries"] = camera.successfulQueries;
     doc["queryErrors"] = camera.queryErrors;
+    doc["videoStartPending"] = camera.videoStartPending;
+    doc["videoStartSent"] = camera.videoStartSent;
+    doc["videoStartConfirmed"] = camera.videoStartConfirmed;
+    doc["videoStartRequests"] = camera.videoStartRequests;
+    doc["videoStartErrors"] = camera.videoStartErrors;
     doc["lastError"] = camera.lastError;
 
     String response;

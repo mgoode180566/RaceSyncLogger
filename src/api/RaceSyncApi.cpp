@@ -121,6 +121,10 @@ void RaceSyncApi::handleStatus()
         camera["connected"] = goPro.connected;
         camera["commandsAllowed"] = false;
         camera["ioSuppressedForRace"] = true;
+        camera["videoStartPending"] = goPro.videoStartPending;
+        camera["videoStartSent"] = goPro.videoStartSent;
+        camera["videoStartConfirmed"] = goPro.videoStartConfirmed;
+        camera["videoStartErrors"] = goPro.videoStartErrors;
 
         String response;
         serializeJson(doc, response);
@@ -279,6 +283,11 @@ void RaceSyncApi::handleStatus()
     camera["connectionAttempts"] = goPro.connectionAttempts;
     camera["successfulQueries"] = goPro.successfulQueries;
     camera["queryErrors"] = goPro.queryErrors;
+    camera["videoStartPending"] = goPro.videoStartPending;
+    camera["videoStartSent"] = goPro.videoStartSent;
+    camera["videoStartConfirmed"] = goPro.videoStartConfirmed;
+    camera["videoStartRequests"] = goPro.videoStartRequests;
+    camera["videoStartErrors"] = goPro.videoStartErrors;
     camera["lastError"] = goPro.lastError;
 
     JsonObject health = doc["health"].to<JsonObject>();

@@ -17,11 +17,14 @@ The normal race-day workflow is deliberately simple: **power it on, check it, ri
    video time, overheating and SD-card status.
 
 The first advertising camera named `GoPro XXXX` is selected. There is no
-automatic BLE startup, scan, reconnect or polling. All camera commands are
-rejected while RaceSync is recording. This test branch does not yet connect
-camera recording to RaceSync logging; disconnect the camera before riding.
+automatic BLE startup, scan, reconnect or polling. Once the camera is connected,
+**Start Manual Logging** starts the VBO session first and then queues a GoPro
+video-start command. Logging continues even if the camera is unavailable.
 
-This guide describes the `feature/manual-gopro-bluetooth` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+This stage does not stop the GoPro when manual logging stops; stop video using
+the camera. Automatic speed-triggered camera control is not implemented.
+
+This guide describes the `feature/manual-gopro-video-start` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 

@@ -85,11 +85,19 @@ void RaceSyncApi::beginManualLoggingRoutes()
             return;
         }
 
+        // Logging is already active before the camera command is queued.
+        // A disconnected or unresponsive GoPro can never prevent VBO capture.
+        const bool cameraVideoStartQueued = _goPro.queueVideoStart();
+        const GoProStatus camera = _goPro.status();
+
         JsonDocument doc;
         doc["started"] = true;
         doc["recording"] = true;
         doc["manual"] = true;
         doc["file"] = _logger.currentFilename();
+        doc["cameraVideoStartQueued"] = cameraVideoStartQueued;
+        doc["cameraConnected"] = camera.connected;
+        if (!cameraVideoStartQueued) doc["cameraError"] = camera.lastError;
         String response;
         serializeJson(doc, response);
         sendJson(200, response);

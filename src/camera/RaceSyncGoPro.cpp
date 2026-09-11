@@ -56,12 +56,14 @@ bool RaceSyncGoPro::connect()
 void RaceSyncGoPro::disconnect()
 {
     _queryRequest = nullptr;
+    _commandRequest = nullptr;
     if (_client != nullptr && _client->isConnected()) _client->disconnect();
 
     portENTER_CRITICAL(&_statusMux);
     _status.connected = false;
     _status.scanning = false;
     _status.statusValid = false;
+    _status.videoStartPending = false;
     portEXIT_CRITICAL(&_statusMux);
     resetResponse();
     setState(status().enabled ? "DISCONNECTED" : "DISABLED");
@@ -79,6 +81,70 @@ bool RaceSyncGoPro::refreshStatus()
         return false;
     }
     return true;
+}
+
+bool RaceSyncGoPro::queueVideoStart()
+{
+    if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.videoStartErrors++;
+        portEXIT_CRITICAL(&_statusMux);
+        setState("CONNECTED", "GoPro must be connected before starting manual logging");
+        return false;
+    }
+    if (_videoStartTaskHandle != nullptr) return false;
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStartPending = true;
+    _status.videoStartSent = false;
+    _status.videoStartConfirmed = false;
+    _status.videoStartRequests++;
+    portEXIT_CRITICAL(&_statusMux);
+
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        videoStartTaskEntry, "gopro-video-start", 4096, this, 1,
+        &_videoStartTaskHandle, 0);
+    if (created == pdPASS) return true;
+
+    _videoStartTaskHandle = nullptr;
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStartPending = false;
+    _status.videoStartErrors++;
+    portEXIT_CRITICAL(&_statusMux);
+    setState("CONNECTED", "Unable to queue GoPro video start");
+    return false;
+}
+
+void RaceSyncGoPro::videoStartTaskEntry(void* argument)
+{
+    static_cast<RaceSyncGoPro*>(argument)->sendVideoStart();
+}
+
+void RaceSyncGoPro::sendVideoStart()
+{
+    // Official Open GoPro Set Shutter command: length, command, parameter,
+    // enable. This task is low priority and never blocks the logging caller.
+    uint8_t request[] = {0x03, 0x01, 0x01, 0x01};
+    _commandRequest->writeValue(request, sizeof(request), true);
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStartSent = true;
+    portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] Video start command sent");
+
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    portENTER_CRITICAL(&_statusMux);
+    if (_status.videoStartPending)
+    {
+        _status.videoStartPending = false;
+        _status.videoStartErrors++;
+        snprintf(_status.lastError, sizeof(_status.lastError), "%s", "No GoPro video-start confirmation");
+    }
+    portEXIT_CRITICAL(&_statusMux);
+
+    _videoStartTaskHandle = nullptr;
+    vTaskDelete(nullptr);
 }
 
 GoProStatus RaceSyncGoPro::status() const
@@ -166,14 +232,18 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     }
 
     _queryRequest = service->getCharacteristic(BLEUUID(QUERY_REQUEST_UUID));
+    _commandRequest = service->getCharacteristic(BLEUUID(COMMAND_REQUEST_UUID));
     BLERemoteCharacteristic* response = service->getCharacteristic(BLEUUID(QUERY_RESPONSE_UUID));
-    if (_queryRequest == nullptr || response == nullptr || !response->canNotify())
+    BLERemoteCharacteristic* commandResponse = service->getCharacteristic(BLEUUID(COMMAND_RESPONSE_UUID));
+    if (_queryRequest == nullptr || _commandRequest == nullptr || response == nullptr ||
+        commandResponse == nullptr || !response->canNotify() || !commandResponse->canNotify())
     {
         disconnect();
         setState("ERROR", "Open GoPro query service incomplete");
         return false;
     }
     response->registerForNotify(notificationCallback, true);
+    commandResponse->registerForNotify(commandNotificationCallback, true);
 
     portENTER_CRITICAL(&_statusMux);
     _status.connected = true;
@@ -196,6 +266,27 @@ bool RaceSyncGoPro::requestStatus()
 void RaceSyncGoPro::notificationCallback(BLERemoteCharacteristic*, uint8_t* data, size_t length, bool)
 {
     if (_instance != nullptr) _instance->accumulateResponse(data, length);
+}
+
+void RaceSyncGoPro::commandNotificationCallback(BLERemoteCharacteristic*, uint8_t* data, size_t length, bool)
+{
+    if (_instance == nullptr || data == nullptr || length < 3 || data[1] != 0x01) return;
+
+    portENTER_CRITICAL(&_instance->_statusMux);
+    _instance->_status.videoStartPending = false;
+    _instance->_status.videoStartConfirmed = data[2] == 0x00;
+    if (data[2] == 0x00)
+    {
+        _instance->_status.recording = true;
+        _instance->_status.lastError[0] = '\0';
+    }
+    else
+    {
+        _instance->_status.videoStartErrors++;
+        snprintf(_instance->_status.lastError, sizeof(_instance->_status.lastError),
+                 "GoPro rejected video start (code %u)", data[2]);
+    }
+    portEXIT_CRITICAL(&_instance->_statusMux);
 }
 
 void RaceSyncGoPro::accumulateResponse(const uint8_t* data, size_t length)
