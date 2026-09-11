@@ -6,7 +6,7 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `reliability/recording-priority-mode` branch.
+This document describes the `feature/manual-gopro-bluetooth` branch.
 
 ## Current functionality
 
@@ -23,6 +23,7 @@ This document describes the `reliability/recording-priority-mode` branch.
 - Recording-priority web/API behaviour that suppresses unnecessary SD access while recording
 - Live RPM diagnostics and saved RPM blue-LED preference
 - KML generation on demand only
+- Manually enabled GoPro HERO9 BLE connection and camera-status reporting
 - Five-part startup diagnostics
 
 ## Proven race use
@@ -177,6 +178,23 @@ Recovery can preserve complete records that reached the card; it cannot recreate
 
 ## Web interface
 
+### GoPro HERO9 status
+
+Bluetooth remains disabled at boot. While RaceSync is idle, open `/camera` and
+select **Enable Bluetooth & Connect**. RaceSync performs one manual scan for an
+advertising camera named `GoPro XXXX`, connects through the official Open GoPro
+service and reads recording, ready/busy, overheating, battery, remaining-video
+and SD-error status. Use **Refresh status** for another explicit query.
+
+On the HERO9, enable wireless connections and place the camera in pairing mode
+for the first connection. HERO9 firmware 1.60 or newer is required for Open
+GoPro support.
+
+There is no background camera task, automatic scan, polling or connection.
+Camera commands are rejected while RaceSync is recording. This branch is for
+bench-testing manual BLE stability; it does not start or stop video when a VBO
+session starts. Disconnect the camera before riding.
+
 ```text
 SSID:     RaceSync
 Password: racesync
@@ -188,6 +206,7 @@ IP:       192.168.4.1
 | `/` | Completed sessions and paddock file actions |
 | `/control` | Manual logging, automatic settings and reboot |
 | `/status` | Device, GPS, RPM, storage and logger diagnostics |
+| `/camera` | Manual GoPro Bluetooth connection and status |
 
 The Sessions page marks recordings as **NEW** using browser-local download history. KML is generated only when requested and is not continuously stored during recording.
 
@@ -208,6 +227,10 @@ The Sessions page marks recordings as **NEW** using browser-local download histo
 | POST | `/api/settings/logging` | Save automatic logging settings |
 | POST | `/api/settings/rpm-led` | Save RPM blue-LED preference while idle |
 | POST | `/api/reboot` | Restart ESP32 while idle |
+| GET | `/api/camera` | Read cached manual camera state |
+| POST | `/api/camera/connect` | Enable BLE, scan once and connect while idle |
+| POST | `/api/camera/refresh` | Request camera status while idle |
+| POST | `/api/camera/disconnect` | Disconnect the camera while idle |
 
 ## RPM diagnostics
 

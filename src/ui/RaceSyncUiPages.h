@@ -7,3 +7,4 @@
 extern const char RACESYNC_SESSIONS_UI[] PROGMEM;
 extern const char RACESYNC_STATUS_UI[] PROGMEM;
 extern const char RACESYNC_CONTROL_UI[] PROGMEM;
+extern const char RACESYNC_CAMERA_UI[] PROGMEM;

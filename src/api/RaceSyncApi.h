@@ -8,6 +8,7 @@
 #include "../logging/RaceSyncLogger.h"
 #include "../gps/RaceSyncGps.h"
 #include "../wifi/RaceSyncWifi.h"
+#include "../camera/RaceSyncGoPro.h"
 
 class RaceSyncApi
 {
@@ -17,6 +18,7 @@ public:
         RaceSyncLogger& logger,
         RaceSyncGps& gps,
         RaceSyncWifi& wifi,
+        RaceSyncGoPro& goPro,
         Telemetry& telemetry,
         DataMode& mode,
         uint32_t& bootCount
@@ -27,14 +29,16 @@ public:
     void beginWebUiRoute();
     void beginManualLoggingRoutes();
     void beginSettingsRoutes();
+    void beginCameraRoutes();
     void update();
 
 private:
-    WebServer _server = WebServer(80);
+    WebServer _server{80};
     RaceSyncStorage& _storage;
     RaceSyncLogger& _logger;
     RaceSyncGps& _gps;
     RaceSyncWifi& _wifi;
+    RaceSyncGoPro& _goPro;
     Telemetry& _telemetry;
     DataMode& _mode;
     uint32_t& _bootCount;
@@ -45,11 +49,12 @@ private:
     void handleLocation();
     void handleTelemetry();
     void handleSessions();
+    void handleCameraStatus(int httpStatus = 200);
     void handleSessionDownloadById(uint32_t sessionId);
     void handleSessionKmlDownloadById(uint32_t sessionId);
     void handleSessionDeleteById(uint32_t sessionId);
     void handleLegacySessionDownload(const String& filename);
-    bool parseSessionIdFromUri(uint32_t& sessionId) const;
+    bool parseSessionIdFromUri(uint32_t& sessionId);
     static String formatUptime();
     static String formatVBoxTime(double rawTime);
     static const char* resetReasonName();

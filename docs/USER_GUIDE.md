@@ -6,7 +6,22 @@ RaceSync automatically records GPS and engine RPM while the motorcycle is moving
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
-This guide describes the `reliability/recording-priority-mode` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+## Checking a GoPro HERO9
+
+1. Update the HERO9 to firmware 1.60 or newer.
+2. Enable the camera's wireless connections and open its device-pairing screen.
+3. Power RaceSync and leave it idle. Bluetooth remains off during startup.
+4. Connect to the `RaceSync` Wi-Fi network and open `http://192.168.4.1/camera`.
+5. Select **Enable Bluetooth & Connect**. Use **Refresh status** for a new query.
+6. Inspect the camera panel for connection, recording, battery, available
+   video time, overheating and SD-card status.
+
+The first advertising camera named `GoPro XXXX` is selected. There is no
+automatic BLE startup, scan, reconnect or polling. All camera commands are
+rejected while RaceSync is recording. This test branch does not yet connect
+camera recording to RaceSync logging; disconnect the camera before riding.
+
+This guide describes the `feature/manual-gopro-bluetooth` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 
@@ -77,6 +92,7 @@ Address:  http://192.168.4.1
 | Sessions `/` | View/download completed sessions and request KML |
 | Control `/control` | Manual logging, automatic settings and reboot |
 | Status `/status` | GPS, RPM, storage, logger and reliability diagnostics |
+| Camera `/camera` | Manually enable, connect, refresh and disconnect GoPro BLE |
 
 Use file-management features after the recording has stopped.
 

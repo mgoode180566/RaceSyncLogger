@@ -4,7 +4,7 @@
 
 RaceSyncController::RaceSyncController()
     : _sensors(_rpmSensor),
-      _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
+      _api(_storage, _logger, _gps, _wifi, _goPro, _telemetry, _mode, _bootCount)
 {
 }
 
@@ -19,7 +19,7 @@ void RaceSyncController::incrementBootCount()
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
 #if defined(RGB_BUILTIN)
-    rgbLedWrite(RGB_BUILTIN, red, green, blue);
+    neopixelWrite(RGB_BUILTIN, red, green, blue);
 #elif defined(LED_BUILTIN)
     digitalWrite(LED_BUILTIN, (red || green || blue) ? HIGH : LOW);
 #else
@@ -248,7 +248,9 @@ void RaceSyncController::begin()
     _api.beginKmlDownloadRoute();
     _api.beginManualLoggingRoutes();
     _api.beginSettingsRoutes();
+    _api.beginCameraRoutes();
     _api.begin();
+    Serial.println("[GOPRO] Bluetooth disabled; use /camera to connect manually");
 
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
