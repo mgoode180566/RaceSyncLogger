@@ -1,4 +1,4 @@
-Õø¥yÈZÖ)ìz»b¢µué^¶*'#include "RaceSyncRpmSensor.h"
+#include "RaceSyncRpmSensor.h"
 
 #include <Preferences.h>
 #include "../../include/Pins.h"
