@@ -26,11 +26,11 @@ void ARDUINO_ISR_ATTR RaceSyncRpmSensor::handleRpmPulse()
         }
 
         _rpmLastPulseUs = nowUs;
-        ++_rpmPulseCount;
+    _rpmPulseCount = _rpmPulseCount + 1;
     }
     else if (_rpmRejectedPulseCount != UINT32_MAX)
     {
-        ++_rpmRejectedPulseCount;
+        _rpmRejectedPulseCount = _rpmRejectedPulseCount + 1;
     }
     portEXIT_CRITICAL_ISR(&_rpmMux);
 }

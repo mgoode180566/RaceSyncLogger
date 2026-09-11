@@ -1,6 +1,7 @@
 #include "RaceSyncController.h"
 
 #include "../config/RaceSyncConfig.h"
+#include <esp_arduino_version.h>
 
 RaceSyncController::RaceSyncController()
     : _sensors(_rpmSensor),
@@ -19,7 +20,11 @@ void RaceSyncController::incrementBootCount()
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
 #if defined(RGB_BUILTIN)
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    rgbLedWrite(RGB_BUILTIN, red, green, blue);
+#else
     neopixelWrite(RGB_BUILTIN, red, green, blue);
+#endif
 #elif defined(LED_BUILTIN)
     digitalWrite(LED_BUILTIN, (red || green || blue) ? HIGH : LOW);
 #else

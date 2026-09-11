@@ -1,6 +1,7 @@
 #include "RaceSyncGoPro.h"
 
 #include <cstring>
+#include <esp_arduino_version.h>
 
 RaceSyncGoPro* RaceSyncGoPro::_instance = nullptr;
 
@@ -9,8 +10,8 @@ namespace
 bool isGoPro(BLEAdvertisedDevice& device)
 {
     if (!device.haveName()) return false;
-    const std::string name = device.getName();
-    return name.rfind("GoPro ", 0) == 0;
+    const String name(device.getName().c_str());
+    return name.startsWith("GoPro ");
 }
 
 int32_t readBigEndian32(const uint8_t* value)
@@ -105,15 +106,20 @@ bool RaceSyncGoPro::discoverAndConnect()
     scan->setActiveScan(true);
     scan->setInterval(80);
     scan->setWindow(40);
-    BLEScanResults results = scan->start(4, false);
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    BLEScanResults* results = scan->start(4, false);
+#else
+    BLEScanResults resultStorage = scan->start(4, false);
+    BLEScanResults* results = &resultStorage;
+#endif
 
     portENTER_CRITICAL(&_statusMux);
     _status.scanning = false;
     portEXIT_CRITICAL(&_statusMux);
 
-    for (int i = 0; i < results.getCount(); ++i)
+    for (int i = 0; i < results->getCount(); ++i)
     {
-        BLEAdvertisedDevice candidate = results.getDevice(i);
+        BLEAdvertisedDevice candidate = results->getDevice(i);
         if (!isGoPro(candidate)) continue;
 
         portENTER_CRITICAL(&_statusMux);
