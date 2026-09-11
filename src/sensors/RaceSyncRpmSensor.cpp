@@ -1,4 +1,4 @@
-#include "RaceSyncRpmSensor.h"
+’¯•y»Zûù÷)Ïzªb¢µuÈ^∂*'#include "RaceSyncRpmSensor.h"
 
 #include <Preferences.h>
 #include "../../include/Pins.h"
@@ -26,7 +26,7 @@ void ARDUINO_ISR_ATTR RaceSyncRpmSensor::handleRpmPulse()
         }
 
         _rpmLastPulseUs = nowUs;
-    _rpmPulseCount = _rpmPulseCount + 1;
+        _rpmPulseCount = _rpmPulseCount + 1;
     }
     else if (_rpmRejectedPulseCount != UINT32_MAX)
     {
