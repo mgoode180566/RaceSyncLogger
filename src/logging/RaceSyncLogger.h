@@ -25,6 +25,15 @@ public:
     uint32_t lastWriteAgeMs() const;
     uint32_t recordingSeconds() const;
 
+    // Adds one event to the already-open per-session diagnostic log. Camera
+    // code remains outside the logger; this hook is used only by manual bench
+    // actions after VBO recording has successfully started.
+    void logSessionDiagnosticEvent(const char* event)
+    {
+        if (!_recording || !_manualSession) return;
+        writeDiagnosticEvent(event, _haveLastTelemetry ? &_lastTelemetry : nullptr);
+    }
+
     double startSpeedKmh() const;
     double stopSpeedKmh() const;
     uint32_t stopDelaySeconds() const;
