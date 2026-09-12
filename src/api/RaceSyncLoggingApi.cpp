@@ -21,8 +21,6 @@ void RaceSyncApi::beginManualLoggingRoutes()
         doc["speedKmh"] = _telemetry.velocityKmh;
         doc["rpm"] = _telemetry.revs;
 
-        // RPM diagnostics are RAM-only and remain available both while IDLE
-        // and while recording. No SD access is performed for these values.
         JsonObject rpm = doc["rpmDiagnostics"].to<JsonObject>();
         rpm["value"] = _telemetry.revs;
         rpm["rawMeasured"] = _telemetry.rpmRawMeasured;
@@ -42,8 +40,6 @@ void RaceSyncApi::beginManualLoggingRoutes()
         rpm["inputPin"] = Pin::RPM_INPUT;
         rpm["inputLevel"] = _telemetry.rpmInputLevel;
 
-        // Camera state is copied from RAM only. No BLE command is issued by
-        // this endpoint, especially while the logger is recording.
         const GoProStatus cameraStatus = _goPro.status();
         JsonObject camera = doc["camera"].to<JsonObject>();
         camera["enabled"] = cameraStatus.enabled;
@@ -55,6 +51,11 @@ void RaceSyncApi::beginManualLoggingRoutes()
         camera["videoStartConfirmed"] = cameraStatus.videoStartConfirmed;
         camera["videoStartRequests"] = cameraStatus.videoStartRequests;
         camera["videoStartErrors"] = cameraStatus.videoStartErrors;
+        camera["videoStopPending"] = cameraStatus.videoStopPending;
+        camera["videoStopSent"] = cameraStatus.videoStopSent;
+        camera["videoStopConfirmed"] = cameraStatus.videoStopConfirmed;
+        camera["videoStopRequests"] = cameraStatus.videoStopRequests;
+        camera["videoStopErrors"] = cameraStatus.videoStopErrors;
         camera["state"] = cameraStatus.state;
         if (cameraStatus.lastError[0] != '\0') camera["lastError"] = cameraStatus.lastError;
 
@@ -101,16 +102,14 @@ void RaceSyncApi::beginManualLoggingRoutes()
             return;
         }
 
-        // RaceSync logging is already active before any camera decision is
-        // made. GoPro failure is therefore non-fatal and can never veto VBO
-        // capture. Camera work remains on its existing low-priority task.
+        // VBO logging is already active before any camera command is queued.
         const GoProStatus cameraBefore = _goPro.status();
         const bool cameraAlreadyRecording = cameraBefore.connected && cameraBefore.statusValid && cameraBefore.recording;
         bool cameraVideoStartQueued = false;
 
         if (cameraAlreadyRecording)
         {
-            cameraVideoStartQueued = true; // Desired end state is already true.
+            cameraVideoStartQueued = true;
             _logger.logSessionDiagnosticEvent("GOPRO_ALREADY_RECORDING");
             Serial.println("[GOPRO] Manual logging started while GoPro was already recording; no shutter command sent");
         }
@@ -146,8 +145,6 @@ void RaceSyncApi::beginManualLoggingRoutes()
             return;
         }
 
-        // Automatic sessions are the race-critical path and cannot be stopped
-        // from the web UI/API. Manual sessions retain Stop for bench testing.
         if (!_logger.manualSession()) {
             sendJson(423, "{\"stopped\":false,\"error\":\"Automatic race recording is protected from web stop\"}");
             return;
@@ -160,18 +157,26 @@ void RaceSyncApi::beginManualLoggingRoutes()
         else
             _logger.logSessionDiagnosticEvent("GOPRO_DISCONNECTED_AT_LOGGER_STOP");
 
+        // Close and finalise the VBO before touching the camera. Camera failure
+        // cannot prevent the session from being safely completed.
         if (!_logger.manualStop()) {
             sendJson(500, "{\"stopped\":false,\"error\":\"Unable to stop logging\"}");
             return;
         }
+
+        const bool cameraVideoStopQueued = _goPro.queueVideoStop();
+        const GoProStatus cameraAfterStopQueue = _goPro.status();
 
         JsonDocument doc;
         doc["stopped"] = true;
         doc["recording"] = false;
         doc["wasManual"] = true;
         doc["file"] = file;
-        doc["cameraConnected"] = cameraAtStop.connected;
-        doc["cameraRecording"] = cameraAtStop.recording;
+        doc["cameraConnected"] = cameraAfterStopQueue.connected;
+        doc["cameraRecording"] = cameraAfterStopQueue.recording;
+        doc["cameraVideoStopQueued"] = cameraVideoStopQueued;
+        doc["cameraVideoStopPending"] = cameraAfterStopQueue.videoStopPending;
+        if (!cameraVideoStopQueued && cameraAfterStopQueue.lastError[0] != '\0') doc["cameraError"] = cameraAfterStopQueue.lastError;
         String response;
         serializeJson(doc, response);
         sendJson(200, response);
