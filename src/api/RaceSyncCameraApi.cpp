@@ -44,22 +44,33 @@ void RaceSyncApi::handleCameraStatus(int httpStatus)
 
 void RaceSyncApi::beginCameraRoutes()
 {
+    Serial.println("[CAMERA-API] Registering camera routes");
+
     _server.on("/api/camera", HTTP_GET, [this]() {
+        Serial.println("[CAMERA-API] GET /api/camera");
         handleCameraStatus();
     });
 
     _server.on("/api/camera/connect", HTTP_POST, [this]() {
+        Serial.printf("[CAMERA-API] POST /api/camera/connect recording=%s\n",
+                      _logger.recording() ? "true" : "false");
         if (_logger.recording())
         {
+            Serial.println("[CAMERA-API] Connect blocked: RaceSync is recording");
             sendJson(423, "{\"error\":\"Camera commands are disabled while RaceSync is recording\",\"racePriorityMode\":true}");
             return;
         }
+
+        Serial.println("[CAMERA-API] Passing connect request to GoPro BLE client");
         handleCameraStatus(_goPro.connect() ? 200 : 503);
     });
 
     _server.on("/api/camera/disconnect", HTTP_POST, [this]() {
+        Serial.printf("[CAMERA-API] POST /api/camera/disconnect recording=%s\n",
+                      _logger.recording() ? "true" : "false");
         if (_logger.recording())
         {
+            Serial.println("[CAMERA-API] Disconnect blocked: RaceSync is recording");
             sendJson(423, "{\"error\":\"Camera commands are disabled while RaceSync is recording\",\"racePriorityMode\":true}");
             return;
         }
@@ -68,8 +79,11 @@ void RaceSyncApi::beginCameraRoutes()
     });
 
     _server.on("/api/camera/refresh", HTTP_POST, [this]() {
+        Serial.printf("[CAMERA-API] POST /api/camera/refresh recording=%s\n",
+                      _logger.recording() ? "true" : "false");
         if (_logger.recording())
         {
+            Serial.println("[CAMERA-API] Refresh blocked: RaceSync is recording");
             sendJson(423, "{\"error\":\"Camera commands are disabled while RaceSync is recording\",\"racePriorityMode\":true}");
             return;
         }
