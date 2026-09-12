@@ -10,15 +10,9 @@ namespace
 {
 bool isGoPro(BLEAdvertisedDevice& device)
 {
-    // Open GoPro specifies 0xFEA6 as the BLE advertising service used for
-    // discovery. The local name is scan-response data and may not always be
-    // available when the advertisement is first seen, so it must not be the
-    // only discovery criterion.
     static BLEUUID goProAdvertisingService("0000fea6-0000-1000-8000-00805f9b34fb");
     if (device.haveServiceUUID() && device.isAdvertisingService(goProAdvertisingService)) return true;
 
-    // Keep the name check as a fallback for BLE stacks that do not expose the
-    // advertised service UUID from the scan result.
     if (!device.haveName()) return false;
     const String name(device.getName().c_str());
     return name.startsWith("GoPro ");
@@ -35,9 +29,6 @@ int32_t readBigEndian32(const uint8_t* value)
 
 void configureGoProBleSecurity()
 {
-    // GoPro accepts a bonded Just Works connection but older cameras can reject
-    // LE Secure Connections. Use legacy bonding and defer authentication until
-    // after the FEA6 GATT service has been discovered.
     static BLESecurity* security = nullptr;
     if (security != nullptr) return;
 
@@ -108,6 +99,7 @@ void RaceSyncGoPro::disconnect()
     _status.scanning = false;
     _status.statusValid = false;
     _status.videoStartPending = false;
+    _status.videoStopPending = false;
     portEXIT_CRITICAL(&_statusMux);
     resetResponse();
     setState(status().enabled ? "DISCONNECTED" : "DISABLED");
@@ -134,10 +126,17 @@ bool RaceSyncGoPro::queueVideoStart()
         portENTER_CRITICAL(&_statusMux);
         _status.videoStartErrors++;
         portEXIT_CRITICAL(&_statusMux);
-        setState("CONNECTED", "GoPro must be connected before starting manual logging");
+        setState("CONNECTED", "GoPro must be connected before video can start");
         return false;
     }
-    if (_videoStartTaskHandle != nullptr) return false;
+    if (_videoStartTaskHandle != nullptr || _videoStopTaskHandle != nullptr) return false;
+
+    const GoProStatus current = status();
+    if (current.statusValid && current.recording)
+    {
+        Serial.println("[GOPRO] Video already recording; no shutter-on command required");
+        return true;
+    }
 
     portENTER_CRITICAL(&_statusMux);
     _status.videoStartPending = true;
@@ -160,15 +159,72 @@ bool RaceSyncGoPro::queueVideoStart()
     return false;
 }
 
+bool RaceSyncGoPro::queueVideoStop()
+{
+    if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.videoStopErrors++;
+        portEXIT_CRITICAL(&_statusMux);
+        Serial.println("[GOPRO] Video stop not queued: camera is not connected");
+        return false;
+    }
+    if (_videoStartTaskHandle != nullptr || _videoStopTaskHandle != nullptr) return false;
+
+    const GoProStatus current = status();
+    if (current.statusValid && !current.recording)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.videoStopConfirmed = true;
+        portEXIT_CRITICAL(&_statusMux);
+        Serial.println("[GOPRO] Video already stopped; no shutter-off command required");
+        return true;
+    }
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStopPending = true;
+    _status.videoStopSent = false;
+    _status.videoStopConfirmed = false;
+    _status.videoStopRequests++;
+    portEXIT_CRITICAL(&_statusMux);
+
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        videoStopTaskEntry, "gopro-video-stop", 4096, this, 1,
+        &_videoStopTaskHandle, 0);
+    if (created == pdPASS) return true;
+
+    _videoStopTaskHandle = nullptr;
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStopPending = false;
+    _status.videoStopErrors++;
+    portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] Unable to queue GoPro video stop");
+    return false;
+}
+
 void RaceSyncGoPro::videoStartTaskEntry(void* argument)
 {
     static_cast<RaceSyncGoPro*>(argument)->sendVideoStart();
 }
 
+void RaceSyncGoPro::videoStopTaskEntry(void* argument)
+{
+    static_cast<RaceSyncGoPro*>(argument)->sendVideoStop();
+}
+
 void RaceSyncGoPro::sendVideoStart()
 {
-    // Official Open GoPro Set Shutter command: length, command, parameter,
-    // enable. This task is low priority and never blocks the logging caller.
+    if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.videoStartPending = false;
+        _status.videoStartErrors++;
+        portEXIT_CRITICAL(&_statusMux);
+        _videoStartTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
     uint8_t request[] = {0x03, 0x01, 0x01, 0x01};
     _commandRequest->writeValue(request, sizeof(request), true);
 
@@ -188,6 +244,41 @@ void RaceSyncGoPro::sendVideoStart()
     portEXIT_CRITICAL(&_statusMux);
 
     _videoStartTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void RaceSyncGoPro::sendVideoStop()
+{
+    if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.videoStopPending = false;
+        _status.videoStopErrors++;
+        portEXIT_CRITICAL(&_statusMux);
+        _videoStopTaskHandle = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    uint8_t request[] = {0x03, 0x01, 0x01, 0x00};
+    _commandRequest->writeValue(request, sizeof(request), true);
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.videoStopSent = true;
+    portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] Video stop command write requested");
+
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    portENTER_CRITICAL(&_statusMux);
+    if (_status.videoStopPending)
+    {
+        _status.videoStopPending = false;
+        _status.videoStopErrors++;
+        snprintf(_status.lastError, sizeof(_status.lastError), "%s", "No GoPro video-stop confirmation");
+    }
+    portEXIT_CRITICAL(&_statusMux);
+
+    _videoStopTaskHandle = nullptr;
     vTaskDelete(nullptr);
 }
 
@@ -323,9 +414,6 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     }
     Serial.println("[GOPRO] BLE pairing/encryption complete");
 
-    // Arduino-ESP32 BLE 3.3.11 exposes registerForNotify() as void. A failed
-    // CCCD write is reported by the BLE stack itself, so usability is verified
-    // by the initial status query and the notification callback that follows.
     Serial.println("[GOPRO] Subscribing to Open GoPro response notifications");
     response->registerForNotify(notificationCallback, true);
     commandResponse->registerForNotify(commandNotificationCallback, true);
@@ -364,20 +452,42 @@ void RaceSyncGoPro::commandNotificationCallback(BLERemoteCharacteristic*, uint8_
 {
     if (_instance == nullptr || data == nullptr || length < 3 || data[1] != 0x01) return;
 
+    const bool success = data[2] == 0x00;
     portENTER_CRITICAL(&_instance->_statusMux);
-    _instance->_status.videoStartPending = false;
-    _instance->_status.videoStartConfirmed = data[2] == 0x00;
-    if (data[2] == 0x00)
+
+    if (_instance->_status.videoStopPending)
     {
-        _instance->_status.recording = true;
-        _instance->_status.lastError[0] = '\0';
+        _instance->_status.videoStopPending = false;
+        _instance->_status.videoStopConfirmed = success;
+        if (success)
+        {
+            _instance->_status.recording = false;
+            _instance->_status.lastError[0] = '\0';
+        }
+        else
+        {
+            _instance->_status.videoStopErrors++;
+            snprintf(_instance->_status.lastError, sizeof(_instance->_status.lastError),
+                     "GoPro rejected video stop (code %u)", data[2]);
+        }
     }
     else
     {
-        _instance->_status.videoStartErrors++;
-        snprintf(_instance->_status.lastError, sizeof(_instance->_status.lastError),
-                 "GoPro rejected video start (code %u)", data[2]);
+        _instance->_status.videoStartPending = false;
+        _instance->_status.videoStartConfirmed = success;
+        if (success)
+        {
+            _instance->_status.recording = true;
+            _instance->_status.lastError[0] = '\0';
+        }
+        else
+        {
+            _instance->_status.videoStartErrors++;
+            snprintf(_instance->_status.lastError, sizeof(_instance->_status.lastError),
+                     "GoPro rejected video start (code %u)", data[2]);
+        }
     }
+
     portEXIT_CRITICAL(&_instance->_statusMux);
 }
 
@@ -478,8 +588,6 @@ void RaceSyncGoPro::resetResponse()
 
 void RaceSyncGoPro::onConnect(BLEClient*)
 {
-    // A raw BLE link is not enough for Open GoPro. The connection is only
-    // reported as usable after pairing plus notification subscriptions succeed.
     portENTER_CRITICAL(&_statusMux);
     _status.connected = false;
     _status.statusValid = false;
@@ -493,6 +601,8 @@ void RaceSyncGoPro::onDisconnect(BLEClient*)
     portENTER_CRITICAL(&_statusMux);
     _status.connected = false;
     _status.statusValid = false;
+    _status.videoStartPending = false;
+    _status.videoStopPending = false;
     snprintf(_status.state, sizeof(_status.state), "%s", "DISCONNECTED");
     portEXIT_CRITICAL(&_statusMux);
     Serial.println("[GOPRO] BLE disconnected");
