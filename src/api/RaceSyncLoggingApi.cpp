@@ -42,6 +42,22 @@ void RaceSyncApi::beginManualLoggingRoutes()
         rpm["inputPin"] = Pin::RPM_INPUT;
         rpm["inputLevel"] = _telemetry.rpmInputLevel;
 
+        // Camera state is copied from RAM only. No BLE command is issued by
+        // this endpoint, especially while the logger is recording.
+        const GoProStatus cameraStatus = _goPro.status();
+        JsonObject camera = doc["camera"].to<JsonObject>();
+        camera["enabled"] = cameraStatus.enabled;
+        camera["connected"] = cameraStatus.connected;
+        camera["statusValid"] = cameraStatus.statusValid;
+        camera["recording"] = cameraStatus.recording;
+        camera["videoStartPending"] = cameraStatus.videoStartPending;
+        camera["videoStartSent"] = cameraStatus.videoStartSent;
+        camera["videoStartConfirmed"] = cameraStatus.videoStartConfirmed;
+        camera["videoStartRequests"] = cameraStatus.videoStartRequests;
+        camera["videoStartErrors"] = cameraStatus.videoStartErrors;
+        camera["state"] = cameraStatus.state;
+        if (cameraStatus.lastError[0] != '\0') camera["lastError"] = cameraStatus.lastError;
+
         doc["storageReady"] = _storage.ready();
         doc["storageWritable"] = _storage.writable();
         doc["racePriorityMode"] = _logger.recording();
@@ -85,19 +101,40 @@ void RaceSyncApi::beginManualLoggingRoutes()
             return;
         }
 
-        // Logging is already active before the camera command is queued.
-        // A disconnected or unresponsive GoPro can never prevent VBO capture.
-        const bool cameraVideoStartQueued = _goPro.queueVideoStart();
-        const GoProStatus camera = _goPro.status();
+        // RaceSync logging is already active before any camera decision is
+        // made. GoPro failure is therefore non-fatal and can never veto VBO
+        // capture. Camera work remains on its existing low-priority task.
+        const GoProStatus cameraBefore = _goPro.status();
+        const bool cameraAlreadyRecording = cameraBefore.connected && cameraBefore.statusValid && cameraBefore.recording;
+        bool cameraVideoStartQueued = false;
+
+        if (cameraAlreadyRecording)
+        {
+            cameraVideoStartQueued = true; // Desired end state is already true.
+            _logger.logSessionDiagnosticEvent("GOPRO_ALREADY_RECORDING");
+            Serial.println("[GOPRO] Manual logging started while GoPro was already recording; no shutter command sent");
+        }
+        else
+        {
+            cameraVideoStartQueued = _goPro.queueVideoStart();
+            _logger.logSessionDiagnosticEvent(cameraVideoStartQueued ? "GOPRO_VIDEO_START_QUEUED" : "GOPRO_VIDEO_START_NOT_QUEUED");
+        }
+
+        const GoProStatus cameraAfter = _goPro.status();
 
         JsonDocument doc;
         doc["started"] = true;
         doc["recording"] = true;
         doc["manual"] = true;
         doc["file"] = _logger.currentFilename();
+        doc["cameraConnected"] = cameraAfter.connected;
+        doc["cameraAlreadyRecording"] = cameraAlreadyRecording;
         doc["cameraVideoStartQueued"] = cameraVideoStartQueued;
-        doc["cameraConnected"] = camera.connected;
-        if (!cameraVideoStartQueued) doc["cameraError"] = camera.lastError;
+        doc["cameraVideoStartPending"] = cameraAfter.videoStartPending;
+        doc["cameraVideoStartConfirmed"] = cameraAfter.videoStartConfirmed || cameraAlreadyRecording;
+        doc["cameraRecording"] = cameraAfter.recording || cameraAlreadyRecording;
+        doc["cameraState"] = cameraAfter.state;
+        if (!cameraVideoStartQueued && cameraAfter.lastError[0] != '\0') doc["cameraError"] = cameraAfter.lastError;
         String response;
         serializeJson(doc, response);
         sendJson(200, response);
@@ -117,6 +154,12 @@ void RaceSyncApi::beginManualLoggingRoutes()
         }
 
         const String file = _logger.currentFilename();
+        const GoProStatus cameraAtStop = _goPro.status();
+        if (cameraAtStop.connected)
+            _logger.logSessionDiagnosticEvent(cameraAtStop.recording ? "GOPRO_RECORDING_AT_LOGGER_STOP" : "GOPRO_NOT_RECORDING_AT_LOGGER_STOP");
+        else
+            _logger.logSessionDiagnosticEvent("GOPRO_DISCONNECTED_AT_LOGGER_STOP");
+
         if (!_logger.manualStop()) {
             sendJson(500, "{\"stopped\":false,\"error\":\"Unable to stop logging\"}");
             return;
@@ -127,6 +170,8 @@ void RaceSyncApi::beginManualLoggingRoutes()
         doc["recording"] = false;
         doc["wasManual"] = true;
         doc["file"] = file;
+        doc["cameraConnected"] = cameraAtStop.connected;
+        doc["cameraRecording"] = cameraAtStop.recording;
         String response;
         serializeJson(doc, response);
         sendJson(200, response);
