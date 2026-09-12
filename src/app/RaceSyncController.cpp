@@ -42,7 +42,6 @@ void RaceSyncController::setLoggingLed(bool on)
 
 void RaceSyncController::updateLoggingLed()
 {
-    // The RPM pulse indicator owns the RGB LED during its short blue flash.
     if (_rpmLedOn) return;
 
     if (!_logger.recording())
@@ -81,7 +80,6 @@ void RaceSyncController::updateRpmPulseLed()
 
     if (!_telemetry.rpmLedEnabled)
     {
-        // Consume pulses while disabled, without affecting capture or logging.
         _lastRpmLedPulseCount = pulseCount;
         if (_rpmLedOn)
         {
@@ -285,17 +283,45 @@ void RaceSyncController::update()
         newSample = true;
     }
 
-    // Feed continuous GPS health into the logger so a stale/no-fix state can never
-    // be interpreted as proof that the motorcycle is stationary.
     _logger.observeGpsHealth(_gps.connected(), _telemetry.valid, _gps.lastPacketAgeMs());
 
-    // Sample RPM continuously; the most recent value is attached to each GPS sample.
     _sensors.update(_telemetry);
     updateRpmPulseLed();
 
     if (newSample)
     {
+        const bool wasRecording = _logger.recording();
+        const bool wasManual = _logger.manualSession();
+
         _logger.processSample(_telemetry, _mode);
+
+        const bool isRecording = _logger.recording();
+        const bool isManual = _logger.manualSession();
+
+        // Only automatic logger transitions are handled here. Manual logging
+        // already controls the GoPro through the UI/API route. Camera commands
+        // are queued after the logger transition and therefore cannot delay or
+        // veto VBO start/stop/finalisation.
+        if (!wasRecording && isRecording && !isManual)
+        {
+            const GoProStatus camera = _goPro.status();
+            if (camera.connected && camera.statusValid && camera.recording)
+            {
+                _logger.logSessionDiagnosticEvent("GOPRO_ALREADY_RECORDING_AUTO");
+                Serial.println("[GOPRO] Auto logging started; GoPro already recording");
+            }
+            else
+            {
+                const bool queued = _goPro.queueVideoStart();
+                _logger.logSessionDiagnosticEvent(queued ? "GOPRO_VIDEO_START_QUEUED_AUTO" : "GOPRO_VIDEO_START_NOT_QUEUED_AUTO");
+                Serial.printf("[GOPRO] Auto logging started; video start %s\n", queued ? "queued" : "not queued");
+            }
+        }
+        else if (wasRecording && !isRecording && !wasManual)
+        {
+            const bool queued = _goPro.queueVideoStop();
+            Serial.printf("[GOPRO] Auto logging stopped; video stop %s\n", queued ? "queued" : "not queued");
+        }
     }
 
     updateLoggingLed();
