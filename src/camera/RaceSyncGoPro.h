@@ -27,15 +27,20 @@ struct GoProStatus
     bool videoStartConfirmed = false;
     uint32_t videoStartRequests = 0;
     uint32_t videoStartErrors = 0;
+    bool videoStopPending = false;
+    bool videoStopSent = false;
+    bool videoStopConfirmed = false;
+    uint32_t videoStopRequests = 0;
+    uint32_t videoStopErrors = 0;
     char name[32] = "";
     char address[20] = "";
     char state[24] = "DISABLED";
     char lastError[64] = "";
 };
 
-// Manually operated Open GoPro BLE client. Bluetooth is never initialised at
-// boot and no background scan or polling task exists. API handlers may call
-// these methods only after confirming that RaceSync is not recording.
+// Open GoPro BLE client. Connection/discovery is initiated manually while
+// RaceSync is idle. Once connected, logger transitions may queue shutter
+// commands on low-priority tasks; those commands never block the VBO path.
 class RaceSyncGoPro : private BLEClientCallbacks
 {
 public:
@@ -43,6 +48,7 @@ public:
     void disconnect();
     bool refreshStatus();
     bool queueVideoStart();
+    bool queueVideoStop();
     GoProStatus status() const;
 
 private:
@@ -59,6 +65,7 @@ private:
     BLERemoteCharacteristic* _queryRequest = nullptr;
     BLERemoteCharacteristic* _commandRequest = nullptr;
     TaskHandle_t _videoStartTaskHandle = nullptr;
+    TaskHandle_t _videoStopTaskHandle = nullptr;
     uint8_t _response[128] = {};
     size_t _responseLength = 0;
     size_t _responseExpected = 0;
@@ -67,11 +74,13 @@ private:
     static void notificationCallback(BLERemoteCharacteristic*, uint8_t*, size_t, bool);
     static void commandNotificationCallback(BLERemoteCharacteristic*, uint8_t*, size_t, bool);
     static void videoStartTaskEntry(void* argument);
+    static void videoStopTaskEntry(void* argument);
     bool initialiseBluetooth();
     bool discoverAndConnect();
     bool configureConnection(BLEAdvertisedDevice* device);
     bool requestStatus();
     void sendVideoStart();
+    void sendVideoStop();
     void accumulateResponse(const uint8_t* data, size_t length);
     void parseResponse();
     void setState(const char* state, const char* error = nullptr);
