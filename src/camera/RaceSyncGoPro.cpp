@@ -9,6 +9,15 @@ namespace
 {
 bool isGoPro(BLEAdvertisedDevice& device)
 {
+    // Open GoPro specifies 0xFEA6 as the BLE advertising service used for
+    // discovery. The local name is scan-response data and may not always be
+    // available when the advertisement is first seen, so it must not be the
+    // only discovery criterion.
+    static BLEUUID goProAdvertisingService("0000fea6-0000-1000-8000-00805f9b34fb");
+    if (device.haveServiceUUID() && device.isAdvertisingService(goProAdvertisingService)) return true;
+
+    // Keep the name check as a fallback for BLE stacks that do not expose the
+    // advertised service UUID from the scan result.
     if (!device.haveName()) return false;
     const String name(device.getName().c_str());
     return name.startsWith("GoPro ");
@@ -44,10 +53,12 @@ bool RaceSyncGoPro::initialiseBluetooth()
 
 bool RaceSyncGoPro::connect()
 {
+    Serial.println("[GOPRO] Connect requested from Web API");
     if (!initialiseBluetooth()) return false;
     if (_client != nullptr && _client->isConnected())
     {
         setState("CONNECTED");
+        Serial.println("[GOPRO] Existing BLE connection is already active");
         return true;
     }
     return discoverAndConnect();
@@ -172,10 +183,12 @@ bool RaceSyncGoPro::discoverAndConnect()
     scan->setActiveScan(true);
     scan->setInterval(80);
     scan->setWindow(40);
+
+    Serial.println("[GOPRO] BLE scan started (10 seconds). Camera must be advertising/pairable.");
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    BLEScanResults* results = scan->start(4, false);
+    BLEScanResults* results = scan->start(10, false);
 #else
-    BLEScanResults resultStorage = scan->start(4, false);
+    BLEScanResults resultStorage = scan->start(10, false);
     BLEScanResults* results = &resultStorage;
 #endif
 
@@ -183,17 +196,34 @@ bool RaceSyncGoPro::discoverAndConnect()
     _status.scanning = false;
     portEXIT_CRITICAL(&_statusMux);
 
-    for (int i = 0; i < results->getCount(); ++i)
+    const int resultCount = results != nullptr ? results->getCount() : 0;
+    Serial.printf("[GOPRO] BLE scan complete: %d device(s) found\n", resultCount);
+
+    for (int i = 0; i < resultCount; ++i)
     {
         BLEAdvertisedDevice candidate = results->getDevice(i);
-        if (!isGoPro(candidate)) continue;
+        const bool goPro = isGoPro(candidate);
+        const String candidateName = candidate.haveName() ? String(candidate.getName().c_str()) : String("<unnamed>");
+        const String candidateAddress(candidate.getAddress().toString().c_str());
+
+        Serial.printf("[GOPRO] BLE device %d: name='%s' address=%s RSSI=%d%s\n",
+                      i + 1,
+                      candidateName.c_str(),
+                      candidateAddress.c_str(),
+                      candidate.getRSSI(),
+                      goPro ? " [GoPro FEA6/name match]" : "");
+
+        if (!goPro) continue;
 
         portENTER_CRITICAL(&_statusMux);
         _status.discovered = true;
         _status.rssi = candidate.getRSSI();
-        snprintf(_status.name, sizeof(_status.name), "%s", candidate.getName().c_str());
-        snprintf(_status.address, sizeof(_status.address), "%s", candidate.getAddress().toString().c_str());
+        snprintf(_status.name, sizeof(_status.name), "%s", candidateName.c_str());
+        snprintf(_status.address, sizeof(_status.address), "%s", candidateAddress.c_str());
         portEXIT_CRITICAL(&_statusMux);
+
+        Serial.printf("[GOPRO] GoPro advertisement found; connecting to %s (%s)\n",
+                      candidateName.c_str(), candidateAddress.c_str());
 
         const bool connected = configureConnection(&candidate);
         scan->clearResults();
@@ -201,7 +231,8 @@ bool RaceSyncGoPro::discoverAndConnect()
     }
 
     scan->clearResults();
-    setState("NOT_FOUND", "No advertising GoPro found");
+    setState("NOT_FOUND", "No GoPro advertising; put camera in pairing mode");
+    Serial.println("[GOPRO] No GoPro advertisement found. On HERO9 open Connections > Connect Device > GoPro Quik App, then retry.");
     return false;
 }
 
@@ -220,14 +251,17 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     {
         disconnect();
         setState("NOT_CONNECTED", "BLE connection failed");
+        Serial.println("[GOPRO] BLE link connection failed");
         return false;
     }
 
+    Serial.println("[GOPRO] BLE link connected; discovering Open GoPro service");
     BLERemoteService* service = _client->getService(BLEUUID(CONTROL_SERVICE_UUID));
     if (service == nullptr)
     {
         disconnect();
         setState("ERROR", "Open GoPro service unavailable");
+        Serial.println("[GOPRO] Open GoPro FEA6 service not available after connection");
         return false;
     }
 
@@ -240,6 +274,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     {
         disconnect();
         setState("ERROR", "Open GoPro query service incomplete");
+        Serial.println("[GOPRO] Required Open GoPro command/query characteristics are incomplete");
         return false;
     }
     response->registerForNotify(notificationCallback, true);
@@ -249,7 +284,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     _status.connected = true;
     portEXIT_CRITICAL(&_statusMux);
     setState("CONNECTED");
-    Serial.printf("[GOPRO] Manually connected to %s\n", device->getName().c_str());
+    Serial.printf("[GOPRO] Manually connected to %s\n", device->haveName() ? device->getName().c_str() : "GoPro");
     requestStatus();
     return true;
 }
@@ -260,6 +295,7 @@ bool RaceSyncGoPro::requestStatus()
     uint8_t request[] = {0x08, QUERY_STATUS_COMMAND, 6, 8, 10, 35, 70, 82, 112};
     resetResponse();
     _queryRequest->writeValue(request, sizeof(request), true);
+    Serial.println("[GOPRO] Status query sent");
     return true;
 }
 
@@ -365,6 +401,7 @@ void RaceSyncGoPro::parseResponse()
     portENTER_CRITICAL(&_statusMux);
     _status = updated;
     portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] Status response received and parsed");
     resetResponse();
 }
 
@@ -393,9 +430,11 @@ void RaceSyncGoPro::onConnect(BLEClient*)
 void RaceSyncGoPro::onDisconnect(BLEClient*)
 {
     _queryRequest = nullptr;
+    _commandRequest = nullptr;
     portENTER_CRITICAL(&_statusMux);
     _status.connected = false;
     _status.statusValid = false;
     snprintf(_status.state, sizeof(_status.state), "%s", "DISCONNECTED");
     portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] BLE disconnected");
 }
