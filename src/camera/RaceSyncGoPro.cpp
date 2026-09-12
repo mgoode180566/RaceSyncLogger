@@ -35,28 +35,25 @@ int32_t readBigEndian32(const uint8_t* value)
 
 void configureGoProBleSecurity()
 {
-    // Open GoPro requires the BLE client to pair before subscribing to or
-    // writing the Control & Query characteristics. HERO9 uses a Just Works
-    // style bond, so no display or passkey capability is required here.
+    // GoPro accepts a bonded Just Works connection but older cameras can reject
+    // LE Secure Connections. Use legacy bonding and defer authentication until
+    // after the FEA6 GATT service has been discovered.
     static BLESecurity* security = nullptr;
     if (security != nullptr) return;
 
     security = new BLESecurity();
     security->setCapability(ESP_IO_CAP_NONE);
-    security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-    security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK);
+    security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK);
 
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    security->setAuthenticationMode(true, false, true);
-#if defined(CONFIG_BLUEDROID_ENABLED)
-    BLESecurity::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
-#endif
+    security->setAuthenticationMode(true, false, false);
+    security->setForceAuthentication(false);
 #else
-    security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-    BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+    security->setAuthenticationMode(ESP_LE_AUTH_BOND);
 #endif
 
-    Serial.println("[GOPRO] BLE security configured: bonded encrypted connection requested");
+    Serial.println("[GOPRO] BLE security configured: legacy bonded Just Works, deferred authentication");
 }
 }
 
@@ -283,7 +280,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     }
 
     _client->setClientCallbacks(this);
-    Serial.println("[GOPRO] Opening BLE link; pairing/bonding will be requested if this is a new client");
+    Serial.println("[GOPRO] Opening BLE link without forcing security");
     if (!_client->connect(device))
     {
         disconnect();
@@ -292,13 +289,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         return false;
     }
 
-    // The BLE security configuration requests encryption from the connection
-    // event. Give SMP enough time to complete before touching protected CCCDs.
-    setState("PAIRING");
-    Serial.println("[GOPRO] BLE link connected; waiting for pairing/encryption");
-    vTaskDelay(pdMS_TO_TICKS(1200));
-
-    Serial.println("[GOPRO] Discovering Open GoPro service");
+    Serial.println("[GOPRO] BLE link connected; discovering Open GoPro service before pairing");
     BLERemoteService* service = _client->getService(BLEUUID(CONTROL_SERVICE_UUID));
     if (service == nullptr)
     {
@@ -320,6 +311,17 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         Serial.println("[GOPRO] Required Open GoPro command/query characteristics are incomplete");
         return false;
     }
+
+    setState("PAIRING");
+    Serial.println("[GOPRO] FEA6 discovered; initiating legacy bonded BLE security");
+    if (!_client->secureConnection())
+    {
+        Serial.println("[GOPRO] Legacy BLE pairing/bonding failed");
+        disconnect();
+        setState("PAIRING_REQUIRED", "GoPro rejected BLE pairing; put camera in pairing mode and retry");
+        return false;
+    }
+    Serial.println("[GOPRO] BLE pairing/encryption complete");
 
     // Arduino-ESP32 BLE 3.3.11 exposes registerForNotify() as void. A failed
     // CCCD write is reported by the BLE stack itself, so usability is verified
