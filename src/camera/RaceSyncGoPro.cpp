@@ -321,24 +321,18 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         return false;
     }
 
+    // Arduino-ESP32 BLE 3.3.11 exposes registerForNotify() as void. A failed
+    // CCCD write is reported by the BLE stack itself, so usability is verified
+    // by the initial status query and the notification callback that follows.
     Serial.println("[GOPRO] Subscribing to Open GoPro response notifications");
-    const bool queryNotifyOk = response->registerForNotify(notificationCallback, true);
-    const bool commandNotifyOk = commandResponse->registerForNotify(commandNotificationCallback, true);
-    if (!queryNotifyOk || !commandNotifyOk)
-    {
-        Serial.printf("[GOPRO] Notification subscription failed: query=%s command=%s\n",
-                      queryNotifyOk ? "OK" : "FAIL",
-                      commandNotifyOk ? "OK" : "FAIL");
-        disconnect();
-        setState("PAIRING_REQUIRED", "GoPro pairing/encryption did not complete");
-        return false;
-    }
+    response->registerForNotify(notificationCallback, true);
+    commandResponse->registerForNotify(commandNotificationCallback, true);
 
     portENTER_CRITICAL(&_statusMux);
     _status.connected = true;
     portEXIT_CRITICAL(&_statusMux);
     setState("CONNECTED");
-    Serial.printf("[GOPRO] Secure Open GoPro channel ready: %s\n",
+    Serial.printf("[GOPRO] Open GoPro notification registration requested: %s\n",
                   device->haveName() ? device->getName().c_str() : "GoPro");
 
     if (!requestStatus())
