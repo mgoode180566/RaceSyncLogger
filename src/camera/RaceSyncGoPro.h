@@ -27,20 +27,15 @@ struct GoProStatus
     bool videoStartConfirmed = false;
     uint32_t videoStartRequests = 0;
     uint32_t videoStartErrors = 0;
-    bool videoStopPending = false;
-    bool videoStopSent = false;
-    bool videoStopConfirmed = false;
-    uint32_t videoStopRequests = 0;
-    uint32_t videoStopErrors = 0;
     char name[32] = "";
     char address[20] = "";
     char state[24] = "DISABLED";
     char lastError[64] = "";
 };
 
-// Open GoPro BLE client. Bluetooth connection/discovery is manually initiated
-// while RaceSync is idle. Once connected, logger transitions may queue shutter
-// commands on low-priority tasks; those commands never block the logging path.
+// Manually operated Open GoPro BLE client. Bluetooth is never initialised at
+// boot and no background scan or polling task exists. API handlers may call
+// these methods only after confirming that RaceSync is not recording.
 class RaceSyncGoPro : private BLEClientCallbacks
 {
 public:
@@ -48,100 +43,6 @@ public:
     void disconnect();
     bool refreshStatus();
     bool queueVideoStart();
-
-    bool queueVideoStop()
-    {
-        const GoProStatus current = status();
-        if (current.connected && current.statusValid && !current.recording)
-        {
-            portENTER_CRITICAL(&_statusMux);
-            _status.videoStopPending = false;
-            _status.videoStopSent = false;
-            _status.videoStopConfirmed = true;
-            portEXIT_CRITICAL(&_statusMux);
-            Serial.println("[GOPRO] Video already stopped; no shutter-off command required");
-            return true;
-        }
-
-        if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr)
-        {
-            portENTER_CRITICAL(&_statusMux);
-            _status.videoStopErrors++;
-            portEXIT_CRITICAL(&_statusMux);
-            Serial.println("[GOPRO] Video stop not queued: camera is not connected");
-            return false;
-        }
-        if (_videoStopTaskHandle != nullptr) return false;
-
-        portENTER_CRITICAL(&_statusMux);
-        _status.videoStopPending = true;
-        _status.videoStopSent = false;
-        _status.videoStopConfirmed = false;
-        _status.videoStopRequests++;
-        portEXIT_CRITICAL(&_statusMux);
-
-        const BaseType_t created = xTaskCreatePinnedToCore(
-            [](void* argument)
-            {
-                RaceSyncGoPro* self = static_cast<RaceSyncGoPro*>(argument);
-                if (self->_client == nullptr || !self->_client->isConnected() || self->_commandRequest == nullptr)
-                {
-                    portENTER_CRITICAL(&self->_statusMux);
-                    self->_status.videoStopPending = false;
-                    self->_status.videoStopErrors++;
-                    portEXIT_CRITICAL(&self->_statusMux);
-                    self->_videoStopTaskHandle = nullptr;
-                    vTaskDelete(nullptr);
-                    return;
-                }
-
-                // Official Open GoPro Set Shutter command with enable=0.
-                uint8_t request[] = {0x03, 0x01, 0x01, 0x00};
-                self->_commandRequest->writeValue(request, sizeof(request), true);
-                portENTER_CRITICAL(&self->_statusMux);
-                self->_status.videoStopSent = true;
-                portEXIT_CRITICAL(&self->_statusMux);
-                Serial.println("[GOPRO] Video stop command write requested");
-
-                // The existing command callback was written for shutter-on and
-                // cannot distinguish the requested parameter. Finalise the stop
-                // state here after the camera has had time to acknowledge it.
-                vTaskDelay(pdMS_TO_TICKS(1500));
-                if (self->_client != nullptr && self->_client->isConnected())
-                {
-                    portENTER_CRITICAL(&self->_statusMux);
-                    self->_status.videoStopPending = false;
-                    self->_status.videoStopConfirmed = true;
-                    self->_status.recording = false;
-                    self->_status.lastError[0] = '\0';
-                    portEXIT_CRITICAL(&self->_statusMux);
-                    Serial.println("[GOPRO] Video stop command completed");
-                }
-                else
-                {
-                    portENTER_CRITICAL(&self->_statusMux);
-                    self->_status.videoStopPending = false;
-                    self->_status.videoStopErrors++;
-                    portEXIT_CRITICAL(&self->_statusMux);
-                    Serial.println("[GOPRO] Video stop could not be confirmed: BLE disconnected");
-                }
-
-                self->_videoStopTaskHandle = nullptr;
-                vTaskDelete(nullptr);
-            },
-            "gopro-video-stop", 4096, this, 1, &_videoStopTaskHandle, 0);
-
-        if (created == pdPASS) return true;
-
-        _videoStopTaskHandle = nullptr;
-        portENTER_CRITICAL(&_statusMux);
-        _status.videoStopPending = false;
-        _status.videoStopErrors++;
-        portEXIT_CRITICAL(&_statusMux);
-        Serial.println("[GOPRO] Unable to queue GoPro video stop");
-        return false;
-    }
-
     GoProStatus status() const;
 
 private:
@@ -158,7 +59,6 @@ private:
     BLERemoteCharacteristic* _queryRequest = nullptr;
     BLERemoteCharacteristic* _commandRequest = nullptr;
     TaskHandle_t _videoStartTaskHandle = nullptr;
-    TaskHandle_t _videoStopTaskHandle = nullptr;
     uint8_t _response[128] = {};
     size_t _responseLength = 0;
     size_t _responseExpected = 0;
