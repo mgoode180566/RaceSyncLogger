@@ -295,7 +295,37 @@ void RaceSyncController::update()
 
     if (newSample)
     {
+        const bool wasRecording = _logger.recording();
+        const bool wasManual = _logger.manualSession();
+
         _logger.processSample(_telemetry, _mode);
+
+        const bool isRecording = _logger.recording();
+        const bool isManual = _logger.manualSession();
+
+        // Manual sessions are controlled by the UI/API route. This block only
+        // follows automatic logger transitions, and always queues camera work
+        // after the logger has started or finished its critical storage work.
+        if (!wasRecording && isRecording && !isManual)
+        {
+            const GoProStatus camera = _goPro.status();
+            if (camera.connected && camera.statusValid && camera.recording)
+            {
+                _logger.logSessionDiagnosticEvent("GOPRO_ALREADY_RECORDING_AUTO");
+                Serial.println("[GOPRO] Auto logging started; GoPro already recording");
+            }
+            else
+            {
+                const bool queued = _goPro.queueVideoStart();
+                _logger.logSessionDiagnosticEvent(queued ? "GOPRO_VIDEO_START_QUEUED_AUTO" : "GOPRO_VIDEO_START_NOT_QUEUED_AUTO");
+                Serial.printf("[GOPRO] Auto logging started; video start %s\n", queued ? "queued" : "not queued");
+            }
+        }
+        else if (wasRecording && !isRecording && !wasManual)
+        {
+            const bool queued = _goPro.queueVideoStop();
+            Serial.printf("[GOPRO] Auto logging stopped; video stop %s\n", queued ? "queued" : "not queued");
+        }
     }
 
     updateLoggingLed();
