@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <esp_arduino_version.h>
+#include <BLESecurity.h>
 
 RaceSyncGoPro* RaceSyncGoPro::_instance = nullptr;
 
@@ -31,6 +32,32 @@ int32_t readBigEndian32(const uint8_t* value)
         (static_cast<uint32_t>(value[2]) << 8) |
         static_cast<uint32_t>(value[3]));
 }
+
+void configureGoProBleSecurity()
+{
+    // Open GoPro requires the BLE client to pair before subscribing to or
+    // writing the Control & Query characteristics. HERO9 uses a Just Works
+    // style bond, so no display or passkey capability is required here.
+    static BLESecurity* security = nullptr;
+    if (security != nullptr) return;
+
+    security = new BLESecurity();
+    security->setCapability(ESP_IO_CAP_NONE);
+    security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    security->setAuthenticationMode(true, false, true);
+#if defined(CONFIG_BLUEDROID_ENABLED)
+    BLESecurity::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
+#endif
+#else
+    security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
+    BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+#endif
+
+    Serial.println("[GOPRO] BLE security configured: bonded encrypted connection requested");
+}
 }
 
 bool RaceSyncGoPro::initialiseBluetooth()
@@ -42,6 +69,7 @@ bool RaceSyncGoPro::initialiseBluetooth()
     _instance = this;
     BLEDevice::init("RaceSync");
     BLEDevice::setPower(ESP_PWR_LVL_P3);
+    configureGoProBleSecurity();
 
     portENTER_CRITICAL(&_statusMux);
     _status.enabled = true;
@@ -57,9 +85,17 @@ bool RaceSyncGoPro::connect()
     if (!initialiseBluetooth()) return false;
     if (_client != nullptr && _client->isConnected())
     {
-        setState("CONNECTED");
-        Serial.println("[GOPRO] Existing BLE connection is already active");
-        return true;
+        const GoProStatus current = status();
+        if (current.connected && current.statusValid)
+        {
+            setState("CONNECTED");
+            Serial.println("[GOPRO] Existing authenticated GoPro connection is already active");
+            return true;
+        }
+
+        Serial.println("[GOPRO] Existing BLE link is not fully configured; reconnecting");
+        _client->disconnect();
+        vTaskDelay(pdMS_TO_TICKS(150));
     }
     return discoverAndConnect();
 }
@@ -142,7 +178,7 @@ void RaceSyncGoPro::sendVideoStart()
     portENTER_CRITICAL(&_statusMux);
     _status.videoStartSent = true;
     portEXIT_CRITICAL(&_statusMux);
-    Serial.println("[GOPRO] Video start command sent");
+    Serial.println("[GOPRO] Video start command write requested");
 
     vTaskDelay(pdMS_TO_TICKS(1500));
     portENTER_CRITICAL(&_statusMux);
@@ -247,6 +283,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     }
 
     _client->setClientCallbacks(this);
+    Serial.println("[GOPRO] Opening BLE link; pairing/bonding will be requested if this is a new client");
     if (!_client->connect(device))
     {
         disconnect();
@@ -255,7 +292,13 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         return false;
     }
 
-    Serial.println("[GOPRO] BLE link connected; discovering Open GoPro service");
+    // The BLE security configuration requests encryption from the connection
+    // event. Give SMP enough time to complete before touching protected CCCDs.
+    setState("PAIRING");
+    Serial.println("[GOPRO] BLE link connected; waiting for pairing/encryption");
+    vTaskDelay(pdMS_TO_TICKS(1200));
+
+    Serial.println("[GOPRO] Discovering Open GoPro service");
     BLERemoteService* service = _client->getService(BLEUUID(CONTROL_SERVICE_UUID));
     if (service == nullptr)
     {
@@ -277,15 +320,32 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         Serial.println("[GOPRO] Required Open GoPro command/query characteristics are incomplete");
         return false;
     }
-    response->registerForNotify(notificationCallback, true);
-    commandResponse->registerForNotify(commandNotificationCallback, true);
+
+    Serial.println("[GOPRO] Subscribing to Open GoPro response notifications");
+    const bool queryNotifyOk = response->registerForNotify(notificationCallback, true);
+    const bool commandNotifyOk = commandResponse->registerForNotify(commandNotificationCallback, true);
+    if (!queryNotifyOk || !commandNotifyOk)
+    {
+        Serial.printf("[GOPRO] Notification subscription failed: query=%s command=%s\n",
+                      queryNotifyOk ? "OK" : "FAIL",
+                      commandNotifyOk ? "OK" : "FAIL");
+        disconnect();
+        setState("PAIRING_REQUIRED", "GoPro pairing/encryption did not complete");
+        return false;
+    }
 
     portENTER_CRITICAL(&_statusMux);
     _status.connected = true;
     portEXIT_CRITICAL(&_statusMux);
     setState("CONNECTED");
-    Serial.printf("[GOPRO] Manually connected to %s\n", device->haveName() ? device->getName().c_str() : "GoPro");
-    requestStatus();
+    Serial.printf("[GOPRO] Secure Open GoPro channel ready: %s\n",
+                  device->haveName() ? device->getName().c_str() : "GoPro");
+
+    if (!requestStatus())
+    {
+        setState("ERROR", "Unable to issue initial GoPro status query");
+        return false;
+    }
     return true;
 }
 
@@ -295,7 +355,7 @@ bool RaceSyncGoPro::requestStatus()
     uint8_t request[] = {0x08, QUERY_STATUS_COMMAND, 6, 8, 10, 35, 70, 82, 112};
     resetResponse();
     _queryRequest->writeValue(request, sizeof(request), true);
-    Serial.println("[GOPRO] Status query sent");
+    Serial.println("[GOPRO] Status query write requested; awaiting notification");
     return true;
 }
 
@@ -422,8 +482,11 @@ void RaceSyncGoPro::resetResponse()
 
 void RaceSyncGoPro::onConnect(BLEClient*)
 {
+    // A raw BLE link is not enough for Open GoPro. The connection is only
+    // reported as usable after pairing plus notification subscriptions succeed.
     portENTER_CRITICAL(&_statusMux);
-    _status.connected = true;
+    _status.connected = false;
+    _status.statusValid = false;
     portEXIT_CRITICAL(&_statusMux);
 }
 
