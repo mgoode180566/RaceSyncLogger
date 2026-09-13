@@ -205,6 +205,12 @@ Logging never waits for the camera, and camera failure cannot roll back or stop
 the VBO session. Camera status reports whether each command was queued and
 confirmed.
 
+Each VBO sample writes `avifileindex` `0000` and `avisynctime` as elapsed
+milliseconds from the first logged GPS sample. The first row is `000000000`;
+later rows follow the actual GPS timestamps, including delayed or missing packet
+intervals. This keeps the telemetry timeline aligned with a GoPro recording
+started with the session without adding camera work to the SD write path.
+
 ```text
 SSID:     RaceSync
 Password: racesync

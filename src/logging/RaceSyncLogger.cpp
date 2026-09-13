@@ -203,6 +203,36 @@ String RaceSyncLogger::createVBoxLine(const Telemetry& t) const
     return String(line);
 }
 
+bool RaceSyncLogger::gpsTimeOfDayMilliseconds(const Telemetry& t, uint32_t& milliseconds)
+{
+    if (!t.timeValid) return false;
+
+    const uint32_t hour = static_cast<uint32_t>(t.rawTime / 10000.0);
+    const uint32_t minute = (static_cast<uint32_t>(t.rawTime) % 10000U) / 100U;
+    const double rawSeconds = t.rawTime - (hour * 10000.0) - (minute * 100.0);
+    if (hour > 23U || minute > 59U || rawSeconds < 0.0 || rawSeconds >= 60.0) return false;
+
+    const uint32_t secondMilliseconds = static_cast<uint32_t>(rawSeconds * 1000.0 + 0.5);
+    milliseconds = ((hour * 60U + minute) * 60U * 1000U) + secondMilliseconds;
+    return true;
+}
+
+uint32_t RaceSyncLogger::aviElapsedMilliseconds(const Telemetry& t) const
+{
+    uint32_t gpsTimeMs = 0;
+    if (_aviStartGpsTimeValid && gpsTimeOfDayMilliseconds(t, gpsTimeMs))
+    {
+        constexpr uint32_t DAY_MS = 24UL * 60UL * 60UL * 1000UL;
+        return gpsTimeMs >= _aviStartGpsTimeMs
+            ? gpsTimeMs - _aviStartGpsTimeMs
+            : (DAY_MS - _aviStartGpsTimeMs) + gpsTimeMs;
+    }
+
+    // Logging normally requires valid GPS time. Keep a monotonic fallback so
+    // a temporary loss of time validity never interrupts the SD write path.
+    return _startedMs == 0 ? 0 : millis() - _startedMs;
+}
+
 void RaceSyncLogger::writeDiagnosticEvent(const char* event, const Telemetry* telemetry)
 {
     if (!_logFile) return;
@@ -293,6 +323,7 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
 
     writeHeader(_file,mode); _file.flush();
     _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false; _autoStartCandidateSince=0; _autoRearmStationarySince=0;
+    _aviStartGpsTimeValid=gpsTimeOfDayMilliseconds(t, _aviStartGpsTimeMs);
     _lastTelemetry=t; _haveLastTelemetry=true; _sessionGpsDropouts=0; _sessionMaxGpsPacketAgeMs=0; _sessionInvalidGpsSamples=0; _gpsStale=false; _stationaryCandidateLogged=false;
 
     if (_logFile)
@@ -447,7 +478,10 @@ void RaceSyncLogger::writeSample(const Telemetry& t)
 {
     if (!_recording) return;
     if (!storageHasSafeFreeSpace()) { stop(true, "LOW_STORAGE"); return; }
-    size_t vboWritten=_file.println(createVBoxLine(t));
+    Telemetry vboTelemetry = t;
+    vboTelemetry.aviFileIndex = 0;
+    vboTelemetry.aviTime = static_cast<double>(aviElapsedMilliseconds(t));
+    size_t vboWritten=_file.println(createVBoxLine(vboTelemetry));
     if (vboWritten==0) { _writeErrors++; Serial.println("[LOGGER] VBO write failed - retaining .part for recovery"); stop(false, "SD_WRITE_ERROR"); return; }
     _sampleCount++; _lastWriteMs=millis(); uint32_t now=millis();
     if (now-_lastFlush >= RaceSyncConfig::LOG_FLUSH_INTERVAL_MS) { _file.flush(); _lastFlush=now; }

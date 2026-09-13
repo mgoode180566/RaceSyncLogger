@@ -30,6 +30,9 @@ Use **Enable Bluetooth & Connect** once to restore automatic connection.
 
 Once connected, both automatic and manual RaceSync sessions queue GoPro video
 start and stop commands. Logging continues even if the camera is unavailable.
+The VBO `avisynctime` column starts at zero and records elapsed GPS milliseconds
+on every row, allowing a video that starts with the session to follow the same
+timeline in Circuit Tools.
 
 This guide describes the `feature/gopro-auto-connect` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 

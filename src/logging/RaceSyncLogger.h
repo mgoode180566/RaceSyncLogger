@@ -72,6 +72,8 @@ private:
     uint32_t _startedMs = 0;
     uint32_t _writeErrors = 0;
     uint32_t _lastStorageCheckMs = 0;
+    uint32_t _aviStartGpsTimeMs = 0;
+    bool _aviStartGpsTimeValid = false;
 
     Preferences _settingsPreferences;
     double _startSpeedKmh = 10.0;
@@ -110,6 +112,8 @@ private:
     void writeDiagnosticSummary(bool finalized);
     String createFilename(const Telemetry& telemetry, DataMode mode) const;
     String createVBoxLine(const Telemetry& telemetry) const;
+    static bool gpsTimeOfDayMilliseconds(const Telemetry& telemetry, uint32_t& milliseconds);
+    uint32_t aviElapsedMilliseconds(const Telemetry& telemetry) const;
     String telemetryTimestamp(const Telemetry& telemetry) const;
     void loadAutomaticSettings();
 };
