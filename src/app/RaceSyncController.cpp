@@ -1,10 +1,11 @@
 #include "RaceSyncController.h"
 
 #include "../config/RaceSyncConfig.h"
+#include <esp_arduino_version.h>
 
 RaceSyncController::RaceSyncController()
     : _sensors(_rpmSensor),
-      _api(_storage, _logger, _gps, _wifi, _telemetry, _mode, _bootCount)
+      _api(_storage, _logger, _gps, _wifi, _goPro, _telemetry, _mode, _bootCount)
 {
 }
 
@@ -19,7 +20,11 @@ void RaceSyncController::incrementBootCount()
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
 #if defined(RGB_BUILTIN)
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     rgbLedWrite(RGB_BUILTIN, red, green, blue);
+#else
+    neopixelWrite(RGB_BUILTIN, red, green, blue);
+#endif
 #elif defined(LED_BUILTIN)
     digitalWrite(LED_BUILTIN, (red || green || blue) ? HIGH : LOW);
 #else
@@ -31,7 +36,12 @@ void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 
 void RaceSyncController::setLoggingLed(bool on)
 {
-    setStatusLed(0, on ? 32 : 0, 0);
+    if (!on)
+        setStatusLed(0, 0, 0);
+    else if (_loggingSessionWithCamera)
+        setStatusLed(0, 0, 48);
+    else
+        setStatusLed(0, 32, 0);
     _loggingLedOn = on;
 }
 
@@ -44,7 +54,21 @@ void RaceSyncController::updateLoggingLed()
     {
         if (_loggingLedOn) setLoggingLed(false);
         _loggingLedCycleStartedMs = 0;
+        _loggingSessionObserved = false;
+        _loggingSessionWithCamera = false;
         return;
+    }
+
+    // Latch the colour once for this logger session. A connected camera counts
+    // when it was already recording or RaceSync accepted the shutter-start
+    // request. Later disconnects do not change the session indication.
+    if (!_loggingSessionObserved)
+    {
+        const GoProStatus camera = _goPro.status();
+        _loggingSessionWithCamera =
+            camera.connected &&
+            (camera.recording || camera.videoStartPending || camera.videoStartConfirmed);
+        _loggingSessionObserved = true;
     }
 
     const uint32_t now = millis();
@@ -248,7 +272,10 @@ void RaceSyncController::begin()
     _api.beginKmlDownloadRoute();
     _api.beginManualLoggingRoutes();
     _api.beginSettingsRoutes();
+    _api.beginCameraRoutes();
     _api.begin();
+    _goPro.beginAutoConnect();
+    Serial.println("[GOPRO] Bluetooth disabled at boot; saved camera will connect automatically while idle");
 
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
@@ -288,10 +315,41 @@ void RaceSyncController::update()
 
     if (newSample)
     {
+        const bool wasRecording = _logger.recording();
+        const bool wasManual = _logger.manualSession();
+
         _logger.processSample(_telemetry, _mode);
+
+        const bool isRecording = _logger.recording();
+        const bool isManual = _logger.manualSession();
+
+        // Manual sessions are controlled by the UI/API route. This block only
+        // follows automatic logger transitions, and always queues camera work
+        // after the logger has started or finished its critical storage work.
+        if (!wasRecording && isRecording && !isManual)
+        {
+            const GoProStatus camera = _goPro.status();
+            if (camera.connected && camera.statusValid && camera.recording)
+            {
+                _logger.logSessionDiagnosticEvent("GOPRO_ALREADY_RECORDING_AUTO");
+                Serial.println("[GOPRO] Auto logging started; GoPro already recording");
+            }
+            else
+            {
+                const bool queued = _goPro.queueVideoStart();
+                _logger.logSessionDiagnosticEvent(queued ? "GOPRO_VIDEO_START_QUEUED_AUTO" : "GOPRO_VIDEO_START_NOT_QUEUED_AUTO");
+                Serial.printf("[GOPRO] Auto logging started; video start %s\n", queued ? "queued" : "not queued");
+            }
+        }
+        else if (wasRecording && !isRecording && !wasManual)
+        {
+            const bool queued = _goPro.queueVideoStop();
+            Serial.printf("[GOPRO] Auto logging stopped; video stop %s\n", queued ? "queued" : "not queued");
+        }
     }
 
     updateLoggingLed();
+    _goPro.updateAutoConnect(_telemetry, _logger.recording());
     _api.update();
     delay(1);
 }

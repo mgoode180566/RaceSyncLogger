@@ -6,7 +6,35 @@ RaceSync automatically records GPS and engine RPM while the motorcycle is moving
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
-This guide describes the `reliability/recording-priority-mode` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+## Checking a GoPro HERO9
+
+1. Update the HERO9 to firmware 1.70 or newer.
+2. Enable the camera's wireless connections and open its device-pairing screen.
+3. Power RaceSync and leave it idle. Bluetooth remains off during startup.
+4. Connect to the `RaceSync` Wi-Fi network and open `http://192.168.4.1/camera`.
+5. Select **Enable Bluetooth & Connect**. Use **Refresh status** for a new query.
+6. Inspect the camera panel for connection, recording, battery, available
+   video time, overheating, SD-card status and GPS time synchronisation.
+
+The first advertising camera named `GoPro XXXX` is selected and its BLE address
+is saved. On later boots RaceSync waits 15 seconds, then connects directly to
+that saved camera without scanning. If it is unavailable, RaceSync retries every
+60 seconds only while idle and stationary. On connection, RaceSync uses
+valid GPS UTC date/time to set the GoPro to UK local time, automatically applying
+GMT or BST. If GPS time is unavailable, the camera remains connected and the
+camera page reports that synchronisation was skipped.
+
+If the ESP32 resets during its first automatic Bluetooth attempt, RaceSync
+suppresses automatic connection on the following boot to prevent a boot loop.
+Use **Enable Bluetooth & Connect** once to restore automatic connection.
+
+Once connected, both automatic and manual RaceSync sessions queue GoPro video
+start and stop commands. Logging continues even if the camera is unavailable.
+The VBO `avisynctime` column starts at zero and records elapsed GPS milliseconds
+on every row, allowing a video that starts with the session to follow the same
+timeline in Circuit Tools.
+
+This guide describes the `feature/gopro-auto-connect` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 
@@ -77,6 +105,7 @@ Address:  http://192.168.4.1
 | Sessions `/` | View/download completed sessions and request KML |
 | Control `/control` | Manual logging, automatic settings and reboot |
 | Status `/status` | GPS, RPM, storage, logger and reliability diagnostics |
+| Camera `/camera` | Manually enable, connect, refresh and disconnect GoPro BLE |
 
 Use file-management features after the recording has stopped.
 

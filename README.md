@@ -6,7 +6,7 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `reliability/recording-priority-mode` branch.
+This document describes the `feature/gopro-auto-connect` branch.
 
 ## Current functionality
 
@@ -23,6 +23,7 @@ This document describes the `reliability/recording-priority-mode` branch.
 - Recording-priority web/API behaviour that suppresses unnecessary SD access while recording
 - Live RPM diagnostics and saved RPM blue-LED preference
 - KML generation on demand only
+- Manually enabled GoPro HERO9 BLE connection and camera-status reporting
 - Five-part startup diagnostics
 
 ## Proven race use
@@ -177,6 +178,39 @@ Recovery can preserve complete records that reached the card; it cannot recreate
 
 ## Web interface
 
+### GoPro HERO9 status
+
+Bluetooth remains disabled at boot. While RaceSync is idle, open `/camera` and
+select **Enable Bluetooth & Connect**. RaceSync performs one manual scan for an
+advertising camera named `GoPro XXXX`, connects through the official Open GoPro
+service and reads recording, ready/busy, overheating, battery, remaining-video
+and SD-error status. When valid GPS UTC date/time is available, RaceSync also
+sets the GoPro clock to the matching UK local time, including the automatic
+GMT/BST change. The camera page reports whether this was confirmed. Use
+**Refresh status** for another explicit status query.
+
+On the HERO9, enable wireless connections and place the camera in pairing mode
+for the first connection. HERO9 firmware 1.70 or newer is required for Open
+GoPro support.
+
+The first pairing is manual. RaceSync then saves that GoPro's BLE address in NVS.
+On later boots it waits 15 seconds and attempts a direct connection to the saved
+camera, without scanning. Failed connections retry every 60 seconds only while
+RaceSync is idle and the motorcycle is stationary. A reset during the first
+automatic attempt suppresses further automatic attempts for the next boot,
+preventing a Bluetooth crash from creating an unattended boot loop; one manual
+connection re-enables the feature. Automatic and manual logger transitions queue the
+official BLE shutter-on and shutter-off commands on low-priority one-shot tasks.
+Logging never waits for the camera, and camera failure cannot roll back or stop
+the VBO session. Camera status reports whether each command was queued and
+confirmed.
+
+Each VBO sample writes `avifileindex` `0000` and `avisynctime` as elapsed
+milliseconds from the first logged GPS sample. The first row is `000000000`;
+later rows follow the actual GPS timestamps, including delayed or missing packet
+intervals. This keeps the telemetry timeline aligned with a GoPro recording
+started with the session without adding camera work to the SD write path.
+
 ```text
 SSID:     RaceSync
 Password: racesync
@@ -188,6 +222,7 @@ IP:       192.168.4.1
 | `/` | Completed sessions and paddock file actions |
 | `/control` | Manual logging, automatic settings and reboot |
 | `/status` | Device, GPS, RPM, storage and logger diagnostics |
+| `/camera` | Manual GoPro Bluetooth connection and status |
 
 The Sessions page marks recordings as **NEW** using browser-local download history. KML is generated only when requested and is not continuously stored during recording.
 
@@ -208,6 +243,10 @@ The Sessions page marks recordings as **NEW** using browser-local download histo
 | POST | `/api/settings/logging` | Save automatic logging settings |
 | POST | `/api/settings/rpm-led` | Save RPM blue-LED preference while idle |
 | POST | `/api/reboot` | Restart ESP32 while idle |
+| GET | `/api/camera` | Read cached manual camera state |
+| POST | `/api/camera/connect` | Enable BLE, scan once and connect while idle |
+| POST | `/api/camera/refresh` | Request camera status while idle |
+| POST | `/api/camera/disconnect` | Disconnect the camera while idle |
 
 ## RPM diagnostics
 

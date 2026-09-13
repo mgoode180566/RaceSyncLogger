@@ -9,6 +9,7 @@
 #include "../wifi/RaceSyncWifi.h"
 #include "../sensors/RaceSyncRpmSensor.h"
 #include "../sensors/RaceSyncSensors.h"
+#include "../camera/RaceSyncGoPro.h"
 #include "../api/RaceSyncApi.h"
 
 class RaceSyncController
@@ -41,6 +42,7 @@ private:
     // sensor lifetimes; RaceSyncSensors only coordinates injected references.
     RaceSyncRpmSensor _rpmSensor;
     RaceSyncSensors _sensors;
+    RaceSyncGoPro _goPro;
 
     Preferences _preferences;
     uint32_t _bootCount = 0;
@@ -49,6 +51,8 @@ private:
 
     uint32_t _loggingLedCycleStartedMs = 0;
     bool _loggingLedOn = false;
+    bool _loggingSessionObserved = false;
+    bool _loggingSessionWithCamera = false;
 
     uint32_t _lastRpmLedPulseCount = 0;
     uint32_t _rpmLedUntilMs = 0;

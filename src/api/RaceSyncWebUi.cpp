@@ -65,6 +65,10 @@ void RaceSyncApi::beginWebUiRoute()
         sendUiPage(_server, RACESYNC_CONTROL_UI);
     });
 
+    _server.on("/camera", HTTP_GET, [this]() {
+        sendUiPage(_server, RACESYNC_CAMERA_UI);
+    });
+
     _server.on("/api/session-summaries", HTTP_GET, [this]() {
         if (_logger.recording())
         {
