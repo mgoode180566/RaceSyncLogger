@@ -36,7 +36,12 @@ void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 
 void RaceSyncController::setLoggingLed(bool on)
 {
-    setStatusLed(0, on ? 32 : 0, 0);
+    if (!on)
+        setStatusLed(0, 0, 0);
+    else if (_loggingSessionWithCamera)
+        setStatusLed(0, 0, 48);
+    else
+        setStatusLed(0, 32, 0);
     _loggingLedOn = on;
 }
 
@@ -49,7 +54,21 @@ void RaceSyncController::updateLoggingLed()
     {
         if (_loggingLedOn) setLoggingLed(false);
         _loggingLedCycleStartedMs = 0;
+        _loggingSessionObserved = false;
+        _loggingSessionWithCamera = false;
         return;
+    }
+
+    // Latch the colour once for this logger session. A connected camera counts
+    // when it was already recording or RaceSync accepted the shutter-start
+    // request. Later disconnects do not change the session indication.
+    if (!_loggingSessionObserved)
+    {
+        const GoProStatus camera = _goPro.status();
+        _loggingSessionWithCamera =
+            camera.connected &&
+            (camera.recording || camera.videoStartPending || camera.videoStartConfirmed);
+        _loggingSessionObserved = true;
     }
 
     const uint32_t now = millis();
