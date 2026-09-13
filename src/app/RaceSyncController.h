@@ -51,6 +51,8 @@ private:
 
     uint32_t _loggingLedCycleStartedMs = 0;
     bool _loggingLedOn = false;
+    bool _loggingSessionObserved = false;
+    bool _loggingSessionWithCamera = false;
 
     uint32_t _lastRpmLedPulseCount = 0;
     uint32_t _rpmLedUntilMs = 0;
