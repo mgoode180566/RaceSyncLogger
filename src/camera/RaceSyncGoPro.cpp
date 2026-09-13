@@ -27,6 +27,59 @@ int32_t readBigEndian32(const uint8_t* value)
         static_cast<uint32_t>(value[3]));
 }
 
+bool isLeapYear(uint16_t year)
+{
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+uint8_t daysInMonth(uint16_t year, uint8_t month)
+{
+    static const uint8_t days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (month == 2 && isLeapYear(year)) return 29;
+    return (month >= 1 && month <= 12) ? days[month - 1] : 31;
+}
+
+uint8_t dayOfWeek(uint16_t year, uint8_t month, uint8_t day)
+{
+    static const uint8_t offsets[] = {0,3,2,5,0,3,5,1,4,6,2,4};
+    if (month < 3) --year;
+    return (year + year / 4 - year / 100 + year / 400 + offsets[month - 1] + day) % 7;
+}
+
+bool isBritishSummerTime(const Telemetry& telemetry)
+{
+    if (telemetry.month < 3 || telemetry.month > 10) return false;
+    if (telemetry.month > 3 && telemetry.month < 10) return true;
+
+    const uint8_t lastDay = daysInMonth(telemetry.year, telemetry.month);
+    const uint8_t transitionDay = lastDay - dayOfWeek(telemetry.year, telemetry.month, lastDay);
+    if (telemetry.month == 3)
+    {
+        if (telemetry.day != transitionDay) return telemetry.day > transitionDay;
+        return telemetry.hour >= 1;
+    }
+    if (telemetry.day != transitionDay) return telemetry.day < transitionDay;
+    return telemetry.hour < 1;
+}
+
+void gpsUtcToUkLocal(const Telemetry& telemetry, uint16_t& year, uint8_t& month,
+                     uint8_t& day, uint8_t& hour)
+{
+    year = telemetry.year;
+    month = telemetry.month;
+    day = telemetry.day;
+    hour = telemetry.hour;
+    if (!isBritishSummerTime(telemetry)) return;
+
+    if (++hour < 24) return;
+    hour = 0;
+    if (++day <= daysInMonth(year, month)) return;
+    day = 1;
+    if (++month <= 12) return;
+    month = 1;
+    ++year;
+}
+
 void configureGoProBleSecurity()
 {
     static BLESecurity* security = nullptr;
@@ -42,6 +95,9 @@ void configureGoProBleSecurity()
     security->setForceAuthentication(false);
 #else
     security->setAuthenticationMode(ESP_LE_AUTH_BOND);
+    // Arduino-ESP32 2.x has no BLEClient::secureConnection(). Request
+    // encryption automatically as part of the subsequent client connection.
+    BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
 #endif
 
     Serial.println("[GOPRO] BLE security configured: legacy bonded Just Works, deferred authentication");
@@ -67,7 +123,7 @@ bool RaceSyncGoPro::initialiseBluetooth()
     return true;
 }
 
-bool RaceSyncGoPro::connect()
+bool RaceSyncGoPro::connect(const Telemetry& telemetry)
 {
     Serial.println("[GOPRO] Connect requested from Web API");
     if (!initialiseBluetooth()) return false;
@@ -78,6 +134,7 @@ bool RaceSyncGoPro::connect()
         {
             setState("CONNECTED");
             Serial.println("[GOPRO] Existing authenticated GoPro connection is already active");
+            setDateTimeFromGps(telemetry);
             return true;
         }
 
@@ -85,7 +142,7 @@ bool RaceSyncGoPro::connect()
         _client->disconnect();
         vTaskDelay(pdMS_TO_TICKS(150));
     }
-    return discoverAndConnect();
+    return discoverAndConnect(telemetry);
 }
 
 void RaceSyncGoPro::disconnect()
@@ -294,7 +351,7 @@ GoProStatus RaceSyncGoPro::status() const
     return copy;
 }
 
-bool RaceSyncGoPro::discoverAndConnect()
+bool RaceSyncGoPro::discoverAndConnect(const Telemetry& telemetry)
 {
     portENTER_CRITICAL(&_statusMux);
     _status.scanning = true;
@@ -349,7 +406,7 @@ bool RaceSyncGoPro::discoverAndConnect()
         Serial.printf("[GOPRO] GoPro advertisement found; connecting to %s (%s)\n",
                       candidateName.c_str(), candidateAddress.c_str());
 
-        const bool connected = configureConnection(&candidate);
+        const bool connected = configureConnection(&candidate, telemetry);
         scan->clearResults();
         return connected;
     }
@@ -360,7 +417,7 @@ bool RaceSyncGoPro::discoverAndConnect()
     return false;
 }
 
-bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
+bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device, const Telemetry& telemetry)
 {
     setState("CONNECTING");
     if (_client == nullptr) _client = BLEDevice::createClient();
@@ -405,6 +462,7 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
 
     setState("PAIRING");
     Serial.println("[GOPRO] FEA6 discovered; initiating legacy bonded BLE security");
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
     if (!_client->secureConnection())
     {
         Serial.println("[GOPRO] Legacy BLE pairing/bonding failed");
@@ -412,6 +470,11 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
         setState("PAIRING_REQUIRED", "GoPro rejected BLE pairing; put camera in pairing mode and retry");
         return false;
     }
+#else
+    // Encryption was requested by BLEDevice before the connection was opened.
+    // Allow the asynchronous Arduino-ESP32 2.x GAP authentication to settle.
+    vTaskDelay(pdMS_TO_TICKS(250));
+#endif
     Serial.println("[GOPRO] BLE pairing/encryption complete");
 
     Serial.println("[GOPRO] Subscribing to Open GoPro response notifications");
@@ -425,11 +488,60 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device)
     Serial.printf("[GOPRO] Open GoPro notification registration requested: %s\n",
                   device->haveName() ? device->getName().c_str() : "GoPro");
 
+    // Time synchronisation is optional. Failure must not turn a successful
+    // camera connection into a failure or interfere with RaceSync logging.
+    setDateTimeFromGps(telemetry);
+
     if (!requestStatus())
     {
         setState("ERROR", "Unable to issue initial GoPro status query");
         return false;
     }
+    return true;
+}
+
+bool RaceSyncGoPro::setDateTimeFromGps(const Telemetry& telemetry)
+{
+    if (!telemetry.timeValid || telemetry.year < 2024 || telemetry.month < 1 ||
+        telemetry.month > 12 || telemetry.day < 1 ||
+        telemetry.day > daysInMonth(telemetry.year, telemetry.month) ||
+        telemetry.hour > 23 || telemetry.minute > 59 || telemetry.second > 59)
+    {
+        portENTER_CRITICAL(&_statusMux);
+        _status.timeSyncSent = false;
+        _status.timeSyncConfirmed = false;
+        snprintf(_status.timeSyncState, sizeof(_status.timeSyncState), "%s", "GPS_TIME_UNAVAILABLE");
+        _status.syncedLocalTime[0] = '\0';
+        portEXIT_CRITICAL(&_statusMux);
+        Serial.println("[GOPRO] Date/time sync skipped: valid GPS UTC time is unavailable");
+        return false;
+    }
+    if (_client == nullptr || !_client->isConnected() || _commandRequest == nullptr) return false;
+
+    uint16_t year;
+    uint8_t month, day, hour;
+    gpsUtcToUkLocal(telemetry, year, month, day, hour);
+
+    // Open GoPro Set Date Time: payload length, command, value length, then
+    // big-endian year followed by month, day, hour, minute and second.
+    uint8_t request[] = {
+        0x09, SET_DATE_TIME_COMMAND, 0x07,
+        static_cast<uint8_t>(year >> 8), static_cast<uint8_t>(year & 0xFF),
+        month, day, hour, telemetry.minute, telemetry.second
+    };
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.timeSyncSent = true;
+    _status.timeSyncConfirmed = false;
+    snprintf(_status.timeSyncState, sizeof(_status.timeSyncState), "%s", "PENDING");
+    snprintf(_status.syncedLocalTime, sizeof(_status.syncedLocalTime),
+             "%04u-%02u-%02u %02u:%02u:%02u", year, month, day, hour,
+             telemetry.minute, telemetry.second);
+    portEXIT_CRITICAL(&_statusMux);
+
+    _commandRequest->writeValue(request, sizeof(request), true);
+    Serial.printf("[GOPRO] GPS time sync requested: %04u-%02u-%02u %02u:%02u:%02u UK local\n",
+                  year, month, day, hour, telemetry.minute, telemetry.second);
     return true;
 }
 
@@ -450,7 +562,22 @@ void RaceSyncGoPro::notificationCallback(BLERemoteCharacteristic*, uint8_t* data
 
 void RaceSyncGoPro::commandNotificationCallback(BLERemoteCharacteristic*, uint8_t* data, size_t length, bool)
 {
-    if (_instance == nullptr || data == nullptr || length < 3 || data[1] != 0x01) return;
+    if (_instance == nullptr || data == nullptr || length < 3) return;
+
+    if (data[1] == SET_DATE_TIME_COMMAND)
+    {
+        const bool success = data[2] == 0x00;
+        portENTER_CRITICAL(&_instance->_statusMux);
+        _instance->_status.timeSyncConfirmed = success;
+        snprintf(_instance->_status.timeSyncState, sizeof(_instance->_status.timeSyncState),
+                 "%s", success ? "SYNCED" : "REJECTED");
+        if (!success) _instance->_status.timeSyncErrors++;
+        portEXIT_CRITICAL(&_instance->_statusMux);
+        Serial.printf("[GOPRO] GPS time sync %s (response code %u)\n",
+                      success ? "confirmed" : "rejected", data[2]);
+        return;
+    }
+    if (data[1] != 0x01) return;
 
     const bool success = data[2] == 0x00;
     portENTER_CRITICAL(&_instance->_statusMux);

@@ -6,7 +6,7 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `feature/manual-gopro-video-start` branch.
+This document describes the `feature/gopro-gps-time-sync` branch.
 
 ## Current functionality
 
@@ -184,22 +184,21 @@ Bluetooth remains disabled at boot. While RaceSync is idle, open `/camera` and
 select **Enable Bluetooth & Connect**. RaceSync performs one manual scan for an
 advertising camera named `GoPro XXXX`, connects through the official Open GoPro
 service and reads recording, ready/busy, overheating, battery, remaining-video
-and SD-error status. Use **Refresh status** for another explicit query.
+and SD-error status. When valid GPS UTC date/time is available, RaceSync also
+sets the GoPro clock to the matching UK local time, including the automatic
+GMT/BST change. The camera page reports whether this was confirmed. Use
+**Refresh status** for another explicit status query.
 
 On the HERO9, enable wireless connections and place the camera in pairing mode
-for the first connection. HERO9 firmware 1.60 or newer is required for Open
+for the first connection. HERO9 firmware 1.70 or newer is required for Open
 GoPro support.
 
 There is no background scan, polling or automatic connection. Connect the GoPro
-manually before starting a bench session. After manual VBO logging has started,
-RaceSync queues the official BLE shutter-on command on a low-priority one-shot
-task. Logging never waits for the camera, and camera failure cannot roll back or
-stop the VBO session. The manual logging response and camera status report
-whether the video-start command was queued and confirmed.
-
-This stage starts video only. Stopping manual logging does not yet stop the
-GoPro; stop the video on the camera itself. Automatic speed-triggered camera
-control remains intentionally unimplemented.
+manually before a session. Automatic and manual logger transitions queue the
+official BLE shutter-on and shutter-off commands on low-priority one-shot tasks.
+Logging never waits for the camera, and camera failure cannot roll back or stop
+the VBO session. Camera status reports whether each command was queued and
+confirmed.
 
 ```text
 SSID:     RaceSync

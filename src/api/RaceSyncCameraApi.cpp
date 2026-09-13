@@ -35,6 +35,16 @@ void RaceSyncApi::handleCameraStatus(int httpStatus)
     doc["videoStartConfirmed"] = camera.videoStartConfirmed;
     doc["videoStartRequests"] = camera.videoStartRequests;
     doc["videoStartErrors"] = camera.videoStartErrors;
+    doc["videoStopPending"] = camera.videoStopPending;
+    doc["videoStopSent"] = camera.videoStopSent;
+    doc["videoStopConfirmed"] = camera.videoStopConfirmed;
+    doc["videoStopRequests"] = camera.videoStopRequests;
+    doc["videoStopErrors"] = camera.videoStopErrors;
+    doc["timeSyncSent"] = camera.timeSyncSent;
+    doc["timeSyncConfirmed"] = camera.timeSyncConfirmed;
+    doc["timeSyncErrors"] = camera.timeSyncErrors;
+    doc["timeSyncState"] = camera.timeSyncState;
+    doc["syncedLocalTime"] = camera.syncedLocalTime;
     doc["lastError"] = camera.lastError;
 
     String response;
@@ -62,7 +72,7 @@ void RaceSyncApi::beginCameraRoutes()
         }
 
         Serial.println("[CAMERA-API] Passing connect request to GoPro BLE client");
-        handleCameraStatus(_goPro.connect() ? 200 : 503);
+        handleCameraStatus(_goPro.connect(_telemetry) ? 200 : 503);
     });
 
     _server.on("/api/camera/disconnect", HTTP_POST, [this]() {

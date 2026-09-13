@@ -8,23 +8,24 @@ The normal race-day workflow is deliberately simple: **power it on, check it, ri
 
 ## Checking a GoPro HERO9
 
-1. Update the HERO9 to firmware 1.60 or newer.
+1. Update the HERO9 to firmware 1.70 or newer.
 2. Enable the camera's wireless connections and open its device-pairing screen.
 3. Power RaceSync and leave it idle. Bluetooth remains off during startup.
 4. Connect to the `RaceSync` Wi-Fi network and open `http://192.168.4.1/camera`.
 5. Select **Enable Bluetooth & Connect**. Use **Refresh status** for a new query.
 6. Inspect the camera panel for connection, recording, battery, available
-   video time, overheating and SD-card status.
+   video time, overheating, SD-card status and GPS time synchronisation.
 
 The first advertising camera named `GoPro XXXX` is selected. There is no
-automatic BLE startup, scan, reconnect or polling. Once the camera is connected,
-**Start Manual Logging** starts the VBO session first and then queues a GoPro
-video-start command. Logging continues even if the camera is unavailable.
+automatic BLE startup, scan, reconnect or polling. On connection, RaceSync uses
+valid GPS UTC date/time to set the GoPro to UK local time, automatically applying
+GMT or BST. If GPS time is unavailable, the camera remains connected and the
+camera page reports that synchronisation was skipped.
 
-This stage does not stop the GoPro when manual logging stops; stop video using
-the camera. Automatic speed-triggered camera control is not implemented.
+Once connected, both automatic and manual RaceSync sessions queue GoPro video
+start and stop commands. Logging continues even if the camera is unavailable.
 
-This guide describes the `feature/manual-gopro-video-start` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+This guide describes the `feature/gopro-gps-time-sync` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 

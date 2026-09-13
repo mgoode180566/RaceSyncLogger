@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BLEDevice.h>
+#include "../config/RaceSyncTypes.h"
 
 struct GoProStatus
 {
@@ -32,6 +33,11 @@ struct GoProStatus
     bool videoStopConfirmed = false;
     uint32_t videoStopRequests = 0;
     uint32_t videoStopErrors = 0;
+    bool timeSyncSent = false;
+    bool timeSyncConfirmed = false;
+    uint32_t timeSyncErrors = 0;
+    char timeSyncState[24] = "NOT_ATTEMPTED";
+    char syncedLocalTime[24] = "";
     char name[32] = "";
     char address[20] = "";
     char state[24] = "DISABLED";
@@ -44,7 +50,7 @@ struct GoProStatus
 class RaceSyncGoPro : private BLEClientCallbacks
 {
 public:
-    bool connect();
+    bool connect(const Telemetry& telemetry);
     void disconnect();
     bool refreshStatus();
     bool queueVideoStart();
@@ -58,6 +64,7 @@ private:
     static constexpr const char* COMMAND_REQUEST_UUID = "b5f90072-aa8d-11e3-9046-0002a5d5c51b";
     static constexpr const char* COMMAND_RESPONSE_UUID = "b5f90073-aa8d-11e3-9046-0002a5d5c51b";
     static constexpr uint8_t QUERY_STATUS_COMMAND = 0x13;
+    static constexpr uint8_t SET_DATE_TIME_COMMAND = 0x0D;
 
     mutable portMUX_TYPE _statusMux = portMUX_INITIALIZER_UNLOCKED;
     GoProStatus _status;
@@ -76,9 +83,10 @@ private:
     static void videoStartTaskEntry(void* argument);
     static void videoStopTaskEntry(void* argument);
     bool initialiseBluetooth();
-    bool discoverAndConnect();
-    bool configureConnection(BLEAdvertisedDevice* device);
+    bool discoverAndConnect(const Telemetry& telemetry);
+    bool configureConnection(BLEAdvertisedDevice* device, const Telemetry& telemetry);
     bool requestStatus();
+    bool setDateTimeFromGps(const Telemetry& telemetry);
     void sendVideoStart();
     void sendVideoStop();
     void accumulateResponse(const uint8_t* data, size_t length);

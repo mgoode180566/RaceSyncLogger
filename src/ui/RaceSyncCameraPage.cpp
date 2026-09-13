@@ -48,6 +48,15 @@ function show(j,ok){
   }else if(j.videoStartConfirmed){
     notice.textContent='GoPro confirmed video start';
     notice.className='ok';
+  }else if(j.connected&&j.timeSyncState==='SYNCED'){
+    notice.textContent='Camera ready · GPS time set to '+j.syncedLocalTime;
+    notice.className='ok';
+  }else if(j.connected&&j.timeSyncState==='PENDING'){
+    notice.textContent='Camera ready · waiting for GPS time confirmation';
+    notice.className='warn';
+  }else if(j.connected&&j.timeSyncState==='GPS_TIME_UNAVAILABLE'){
+    notice.textContent='Camera ready · GPS time was not valid when connected';
+    notice.className='warn';
   }else{
     notice.textContent=j.connected?'Camera ready':(j.state||'Disconnected');
     notice.className=j.connected?'ok':'warn';
