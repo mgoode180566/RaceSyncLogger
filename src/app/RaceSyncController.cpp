@@ -255,7 +255,8 @@ void RaceSyncController::begin()
     _api.beginSettingsRoutes();
     _api.beginCameraRoutes();
     _api.begin();
-    Serial.println("[GOPRO] Bluetooth disabled; use /camera to connect manually");
+    _goPro.beginAutoConnect();
+    Serial.println("[GOPRO] Bluetooth disabled at boot; saved camera will connect automatically while idle");
 
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
@@ -329,6 +330,7 @@ void RaceSyncController::update()
     }
 
     updateLoggingLed();
+    _goPro.updateAutoConnect(_telemetry, _logger.recording());
     _api.update();
     delay(1);
 }

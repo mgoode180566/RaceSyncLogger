@@ -288,6 +288,12 @@ void RaceSyncApi::handleStatus()
     camera["videoStartConfirmed"] = goPro.videoStartConfirmed;
     camera["videoStartRequests"] = goPro.videoStartRequests;
     camera["videoStartErrors"] = goPro.videoStartErrors;
+    camera["autoConnectConfigured"] = goPro.autoConnectConfigured;
+    camera["autoConnectAttempting"] = goPro.autoConnectAttempting;
+    camera["autoConnectSuppressed"] = goPro.autoConnectSuppressed;
+    camera["autoConnectAttempts"] = goPro.autoConnectAttempts;
+    camera["autoConnectSuccesses"] = goPro.autoConnectSuccesses;
+    camera["savedAddress"] = goPro.savedAddress;
     camera["lastError"] = goPro.lastError;
 
     JsonObject health = doc["health"].to<JsonObject>();

@@ -8,6 +8,9 @@ RaceSyncGoPro* RaceSyncGoPro::_instance = nullptr;
 
 namespace
 {
+constexpr uint32_t AUTO_CONNECT_DELAY_MS = 15000;
+constexpr uint32_t AUTO_CONNECT_RETRY_MS = 60000;
+
 bool isGoPro(BLEAdvertisedDevice& device)
 {
     static BLEUUID goProAdvertisingService("0000fea6-0000-1000-8000-00805f9b34fb");
@@ -104,6 +107,93 @@ void configureGoProBleSecurity()
 }
 }
 
+void RaceSyncGoPro::beginAutoConnect()
+{
+    _preferencesReady = _preferences.begin("racesync-gopro", false);
+    if (!_preferencesReady)
+    {
+        Serial.println("[GOPRO] Auto-connect settings unavailable");
+        return;
+    }
+
+    _savedAddress = _preferences.getString("address", "");
+    _savedAddressType = _preferences.getUChar("addressType", BLE_ADDR_TYPE_PUBLIC);
+    const bool interruptedAttempt = _preferences.getBool("autoPending", false);
+    if (interruptedAttempt)
+    {
+        // A reset during the previous automatic BLE attempt must not recreate
+        // an unattended boot loop. Manual Connect clears this one-boot guard.
+        _preferences.putBool("autoPending", false);
+        _autoConnectSuppressed = true;
+        Serial.println("[GOPRO] Automatic connection suppressed: previous attempt ended in a reset");
+    }
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.autoConnectConfigured = _savedAddress.length() > 0;
+    _status.autoConnectSuppressed = _autoConnectSuppressed;
+    snprintf(_status.savedAddress, sizeof(_status.savedAddress), "%s", _savedAddress.c_str());
+    portEXIT_CRITICAL(&_statusMux);
+    _nextAutoConnectMs = millis() + AUTO_CONNECT_DELAY_MS;
+
+    Serial.printf("[GOPRO] Auto-connect %s; first attempt after %lu seconds while idle\n",
+                  _savedAddress.length() ? "configured" : "waiting for first manual pairing",
+                  static_cast<unsigned long>(AUTO_CONNECT_DELAY_MS / 1000));
+}
+
+void RaceSyncGoPro::updateAutoConnect(const Telemetry& telemetry, bool loggerRecording)
+{
+    if (!_preferencesReady || _savedAddress.length() == 0 || _autoConnectSuppressed ||
+        loggerRecording || telemetry.velocityKmh > 1.0 || _autoConnectTaskHandle != nullptr) return;
+    if (status().connected) return;
+
+    const uint32_t now = millis();
+    if (static_cast<int32_t>(now - _nextAutoConnectMs) < 0) return;
+    _nextAutoConnectMs = now + AUTO_CONNECT_RETRY_MS;
+    _autoConnectTelemetry = telemetry;
+
+    if (!_autoCrashGuardComplete) _preferences.putBool("autoPending", true);
+    portENTER_CRITICAL(&_statusMux);
+    _status.autoConnectAttempting = true;
+    _status.autoConnectAttempts++;
+    portEXIT_CRITICAL(&_statusMux);
+
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        autoConnectTaskEntry, "gopro-auto-connect", 6144, this, 1,
+        &_autoConnectTaskHandle, 0);
+    if (created == pdPASS)
+    {
+        Serial.printf("[GOPRO] Automatic direct connection queued for %s\n", _savedAddress.c_str());
+        return;
+    }
+
+    if (!_autoCrashGuardComplete) _preferences.putBool("autoPending", false);
+    _autoConnectTaskHandle = nullptr;
+    portENTER_CRITICAL(&_statusMux);
+    _status.autoConnectAttempting = false;
+    portEXIT_CRITICAL(&_statusMux);
+    Serial.println("[GOPRO] Unable to create automatic connection task");
+}
+
+void RaceSyncGoPro::autoConnectTaskEntry(void* argument)
+{
+    RaceSyncGoPro* camera = static_cast<RaceSyncGoPro*>(argument);
+    const bool connected = camera->connectSavedCamera(camera->_autoConnectTelemetry);
+
+    if (!camera->_autoCrashGuardComplete && camera->_preferencesReady)
+    {
+        camera->_preferences.putBool("autoPending", false);
+        camera->_autoCrashGuardComplete = true;
+    }
+    portENTER_CRITICAL(&camera->_statusMux);
+    camera->_status.autoConnectAttempting = false;
+    if (connected) camera->_status.autoConnectSuccesses++;
+    portEXIT_CRITICAL(&camera->_statusMux);
+
+    Serial.printf("[GOPRO] Automatic direct connection %s\n", connected ? "succeeded" : "failed");
+    camera->_autoConnectTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
 bool RaceSyncGoPro::initialiseBluetooth()
 {
     if (status().enabled) return true;
@@ -126,6 +216,11 @@ bool RaceSyncGoPro::initialiseBluetooth()
 bool RaceSyncGoPro::connect(const Telemetry& telemetry)
 {
     Serial.println("[GOPRO] Connect requested from Web API");
+    if (_autoConnectTaskHandle != nullptr)
+    {
+        setState("AUTO_CONNECTING", "Automatic GoPro connection is already in progress");
+        return false;
+    }
     if (!initialiseBluetooth()) return false;
     if (_client != nullptr && _client->isConnected())
     {
@@ -145,7 +240,7 @@ bool RaceSyncGoPro::connect(const Telemetry& telemetry)
     return discoverAndConnect(telemetry);
 }
 
-void RaceSyncGoPro::disconnect()
+void RaceSyncGoPro::disconnect(bool suppressAutoConnect)
 {
     _queryRequest = nullptr;
     _commandRequest = nullptr;
@@ -157,10 +252,16 @@ void RaceSyncGoPro::disconnect()
     _status.statusValid = false;
     _status.videoStartPending = false;
     _status.videoStopPending = false;
+    if (suppressAutoConnect)
+    {
+        _autoConnectSuppressed = true;
+        _status.autoConnectSuppressed = true;
+    }
     portEXIT_CRITICAL(&_statusMux);
     resetResponse();
     setState(status().enabled ? "DISCONNECTED" : "DISABLED");
-    Serial.println("[GOPRO] Manual disconnect complete");
+    Serial.printf("[GOPRO] Disconnect complete; auto-connect %s for this boot\n",
+                  suppressAutoConnect ? "paused" : "unchanged");
 }
 
 bool RaceSyncGoPro::refreshStatus()
@@ -437,6 +538,40 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device, const Telem
         return false;
     }
 
+    const String name = device->haveName() ? String(device->getName().c_str()) : String("GoPro");
+    const String address(device->getAddress().toString().c_str());
+    const bool configured = configureConnectedClient(name.c_str(), address.c_str(), telemetry);
+    if (configured)
+        rememberCamera(name.c_str(), address.c_str(), static_cast<uint8_t>(device->getAddressType()));
+    return configured;
+}
+
+bool RaceSyncGoPro::connectSavedCamera(const Telemetry& telemetry)
+{
+    if (_savedAddress.length() == 0 || !initialiseBluetooth()) return false;
+    if (_client != nullptr && _client->isConnected()) return true;
+
+    setState("AUTO_CONNECTING");
+    if (_client == nullptr) _client = BLEDevice::createClient();
+    if (_client == nullptr) return false;
+    _client->setClientCallbacks(this);
+
+    BLEAddress address(_savedAddress.c_str());
+    Serial.printf("[GOPRO] Opening saved BLE address %s without scanning\n", _savedAddress.c_str());
+    if (!_client->connect(address, static_cast<esp_ble_addr_type_t>(_savedAddressType)))
+    {
+        _queryRequest = nullptr;
+        _commandRequest = nullptr;
+        setState("AUTO_RETRY_WAIT", "Saved GoPro did not answer; retrying while idle");
+        return false;
+    }
+    return configureConnectedClient("Saved GoPro", _savedAddress.c_str(), telemetry);
+}
+
+bool RaceSyncGoPro::configureConnectedClient(const char* name, const char* address,
+                                             const Telemetry& telemetry)
+{
+
     Serial.println("[GOPRO] BLE link connected; discovering Open GoPro service before pairing");
     BLERemoteService* service = _client->getService(BLEUUID(CONTROL_SERVICE_UUID));
     if (service == nullptr)
@@ -483,10 +618,11 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device, const Telem
 
     portENTER_CRITICAL(&_statusMux);
     _status.connected = true;
+    snprintf(_status.name, sizeof(_status.name), "%s", name);
+    snprintf(_status.address, sizeof(_status.address), "%s", address);
     portEXIT_CRITICAL(&_statusMux);
     setState("CONNECTED");
-    Serial.printf("[GOPRO] Open GoPro notification registration requested: %s\n",
-                  device->haveName() ? device->getName().c_str() : "GoPro");
+    Serial.printf("[GOPRO] Open GoPro notification registration requested: %s\n", name);
 
     // Time synchronisation is optional. Failure must not turn a successful
     // camera connection into a failure or interfere with RaceSync logging.
@@ -498,6 +634,28 @@ bool RaceSyncGoPro::configureConnection(BLEAdvertisedDevice* device, const Telem
         return false;
     }
     return true;
+}
+
+void RaceSyncGoPro::rememberCamera(const char* name, const char* address, uint8_t addressType)
+{
+    _savedAddress = address;
+    _savedAddressType = addressType;
+    _autoConnectSuppressed = false;
+    _autoCrashGuardComplete = true;
+    if (_preferencesReady)
+    {
+        _preferences.putString("address", address);
+        _preferences.putUChar("addressType", addressType);
+        _preferences.putBool("autoPending", false);
+    }
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.autoConnectConfigured = true;
+    _status.autoConnectSuppressed = false;
+    snprintf(_status.savedAddress, sizeof(_status.savedAddress), "%s", address);
+    snprintf(_status.name, sizeof(_status.name), "%s", name);
+    portEXIT_CRITICAL(&_statusMux);
+    Serial.printf("[GOPRO] Saved camera for future automatic connection: %s\n", address);
 }
 
 bool RaceSyncGoPro::setDateTimeFromGps(const Telemetry& telemetry)

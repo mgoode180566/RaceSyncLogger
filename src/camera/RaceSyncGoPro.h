@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BLEDevice.h>
+#include <Preferences.h>
 #include "../config/RaceSyncTypes.h"
 
 struct GoProStatus
@@ -38,6 +39,12 @@ struct GoProStatus
     uint32_t timeSyncErrors = 0;
     char timeSyncState[24] = "NOT_ATTEMPTED";
     char syncedLocalTime[24] = "";
+    bool autoConnectConfigured = false;
+    bool autoConnectAttempting = false;
+    bool autoConnectSuppressed = false;
+    uint32_t autoConnectAttempts = 0;
+    uint32_t autoConnectSuccesses = 0;
+    char savedAddress[20] = "";
     char name[32] = "";
     char address[20] = "";
     char state[24] = "DISABLED";
@@ -50,8 +57,10 @@ struct GoProStatus
 class RaceSyncGoPro : private BLEClientCallbacks
 {
 public:
+    void beginAutoConnect();
+    void updateAutoConnect(const Telemetry& telemetry, bool loggerRecording);
     bool connect(const Telemetry& telemetry);
-    void disconnect();
+    void disconnect(bool suppressAutoConnect = false);
     bool refreshStatus();
     bool queueVideoStart();
     bool queueVideoStop();
@@ -73,6 +82,15 @@ private:
     BLERemoteCharacteristic* _commandRequest = nullptr;
     TaskHandle_t _videoStartTaskHandle = nullptr;
     TaskHandle_t _videoStopTaskHandle = nullptr;
+    TaskHandle_t _autoConnectTaskHandle = nullptr;
+    Preferences _preferences;
+    String _savedAddress;
+    uint8_t _savedAddressType = BLE_ADDR_TYPE_PUBLIC;
+    Telemetry _autoConnectTelemetry;
+    uint32_t _nextAutoConnectMs = 0;
+    bool _preferencesReady = false;
+    bool _autoCrashGuardComplete = false;
+    bool _autoConnectSuppressed = false;
     uint8_t _response[128] = {};
     size_t _responseLength = 0;
     size_t _responseExpected = 0;
@@ -82,9 +100,14 @@ private:
     static void commandNotificationCallback(BLERemoteCharacteristic*, uint8_t*, size_t, bool);
     static void videoStartTaskEntry(void* argument);
     static void videoStopTaskEntry(void* argument);
+    static void autoConnectTaskEntry(void* argument);
     bool initialiseBluetooth();
     bool discoverAndConnect(const Telemetry& telemetry);
     bool configureConnection(BLEAdvertisedDevice* device, const Telemetry& telemetry);
+    bool connectSavedCamera(const Telemetry& telemetry);
+    bool configureConnectedClient(const char* name, const char* address,
+                                  const Telemetry& telemetry);
+    void rememberCamera(const char* name, const char* address, uint8_t addressType);
     bool requestStatus();
     bool setDateTimeFromGps(const Telemetry& telemetry);
     void sendVideoStart();

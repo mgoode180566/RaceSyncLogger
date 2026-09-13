@@ -16,16 +16,22 @@ The normal race-day workflow is deliberately simple: **power it on, check it, ri
 6. Inspect the camera panel for connection, recording, battery, available
    video time, overheating, SD-card status and GPS time synchronisation.
 
-The first advertising camera named `GoPro XXXX` is selected. There is no
-automatic BLE startup, scan, reconnect or polling. On connection, RaceSync uses
+The first advertising camera named `GoPro XXXX` is selected and its BLE address
+is saved. On later boots RaceSync waits 15 seconds, then connects directly to
+that saved camera without scanning. If it is unavailable, RaceSync retries every
+60 seconds only while idle and stationary. On connection, RaceSync uses
 valid GPS UTC date/time to set the GoPro to UK local time, automatically applying
 GMT or BST. If GPS time is unavailable, the camera remains connected and the
 camera page reports that synchronisation was skipped.
 
+If the ESP32 resets during its first automatic Bluetooth attempt, RaceSync
+suppresses automatic connection on the following boot to prevent a boot loop.
+Use **Enable Bluetooth & Connect** once to restore automatic connection.
+
 Once connected, both automatic and manual RaceSync sessions queue GoPro video
 start and stop commands. Logging continues even if the camera is unavailable.
 
-This guide describes the `feature/gopro-gps-time-sync` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+This guide describes the `feature/gopro-auto-connect` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 

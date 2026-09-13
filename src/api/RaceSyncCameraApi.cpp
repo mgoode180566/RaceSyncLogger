@@ -45,6 +45,12 @@ void RaceSyncApi::handleCameraStatus(int httpStatus)
     doc["timeSyncErrors"] = camera.timeSyncErrors;
     doc["timeSyncState"] = camera.timeSyncState;
     doc["syncedLocalTime"] = camera.syncedLocalTime;
+    doc["autoConnectConfigured"] = camera.autoConnectConfigured;
+    doc["autoConnectAttempting"] = camera.autoConnectAttempting;
+    doc["autoConnectSuppressed"] = camera.autoConnectSuppressed;
+    doc["autoConnectAttempts"] = camera.autoConnectAttempts;
+    doc["autoConnectSuccesses"] = camera.autoConnectSuccesses;
+    doc["savedAddress"] = camera.savedAddress;
     doc["lastError"] = camera.lastError;
 
     String response;
@@ -84,7 +90,7 @@ void RaceSyncApi::beginCameraRoutes()
             sendJson(423, "{\"error\":\"Camera commands are disabled while RaceSync is recording\",\"racePriorityMode\":true}");
             return;
         }
-        _goPro.disconnect();
+        _goPro.disconnect(true);
         handleCameraStatus();
     });
 

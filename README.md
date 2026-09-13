@@ -6,7 +6,7 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `feature/gopro-gps-time-sync` branch.
+This document describes the `feature/gopro-auto-connect` branch.
 
 ## Current functionality
 
@@ -193,8 +193,13 @@ On the HERO9, enable wireless connections and place the camera in pairing mode
 for the first connection. HERO9 firmware 1.70 or newer is required for Open
 GoPro support.
 
-There is no background scan, polling or automatic connection. Connect the GoPro
-manually before a session. Automatic and manual logger transitions queue the
+The first pairing is manual. RaceSync then saves that GoPro's BLE address in NVS.
+On later boots it waits 15 seconds and attempts a direct connection to the saved
+camera, without scanning. Failed connections retry every 60 seconds only while
+RaceSync is idle and the motorcycle is stationary. A reset during the first
+automatic attempt suppresses further automatic attempts for the next boot,
+preventing a Bluetooth crash from creating an unattended boot loop; one manual
+connection re-enables the feature. Automatic and manual logger transitions queue the
 official BLE shutter-on and shutter-off commands on low-priority one-shot tasks.
 Logging never waits for the camera, and camera failure cannot roll back or stop
 the VBO session. Camera status reports whether each command was queued and

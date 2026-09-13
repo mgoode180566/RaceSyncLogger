@@ -28,6 +28,9 @@ function show(j,ok){
   if(j.recording){
     cameraState.textContent='● GoPro RECORDING';
     cameraState.className='cameraState ok';
+  }else if(j.autoConnectAttempting){
+    cameraState.textContent='Connecting automatically to saved GoPro…';
+    cameraState.className='cameraState warn';
   }else if(j.videoStartPending){
     cameraState.textContent='GoPro video start pending…';
     cameraState.className='cameraState warn';
@@ -39,7 +42,10 @@ function show(j,ok){
     cameraState.className='cameraState warn';
   }
 
-  if(j.lastError){
+  if(j.autoConnectSuppressed){
+    notice.textContent='Automatic connection paused for this boot; use Connect manually or reboot RaceSync';
+    notice.className='bad';
+  }else if(j.lastError){
     notice.textContent=j.lastError;
     notice.className='bad';
   }else if(j.commandsAllowed===false){
@@ -62,7 +68,7 @@ function show(j,ok){
     notice.className=j.connected?'ok':'warn';
   }
 
-  connectButton.disabled=busy||j.commandsAllowed===false||j.connected;
+  connectButton.disabled=busy||j.commandsAllowed===false||j.connected||j.autoConnectAttempting;
   refreshButton.disabled=busy||j.commandsAllowed===false||!j.connected;
   disconnectButton.disabled=busy||j.commandsAllowed===false||!j.connected;
 }
