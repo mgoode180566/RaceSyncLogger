@@ -3,7 +3,19 @@
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <Preferences.h>
+#include <esp_arduino_version.h>
 #include "../config/RaceSyncTypes.h"
+
+// Arduino-ESP32 3.x exposes BLE address types as uint8_t values (for example
+// BLE_ADDR_PUBLIC) and BLEClient::connect(BLEAddress, uint8_t, ...). Older
+// Bluedroid code used BLE_ADDR_TYPE_PUBLIC / esp_ble_addr_type_t. Keep the
+// existing saved-address implementation source-compatible with the 3.x API.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+#ifndef BLE_ADDR_TYPE_PUBLIC
+#define BLE_ADDR_TYPE_PUBLIC BLE_ADDR_PUBLIC
+#endif
+using esp_ble_addr_type_t = uint8_t;
+#endif
 
 struct GoProStatus
 {
