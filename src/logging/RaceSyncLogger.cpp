@@ -6,7 +6,9 @@ namespace
     constexpr uint32_t GPS_STALE_THRESHOLD_MS = 1000;
     constexpr uint8_t GPS_MIN_SATELLITES_FOR_MANUAL_START = 4;
     constexpr uint8_t GPS_MIN_SATELLITES_FOR_AUTO_START = 6;
-    constexpr uint32_t AUTO_START_CONFIRM_MS = 2000;
+    // At 25 Hz, 50 consecutive qualifying samples provide a two-second
+    // confirmation without allowing blocked web-transfer time to count.
+    constexpr uint16_t AUTO_START_CONFIRM_SAMPLES = 50;
     constexpr uint32_t AUTO_REARM_STATIONARY_MS = 3000;
 
     bool isLeapYear(uint16_t year)
@@ -294,7 +296,7 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
         if (manual) {
             _manualSession = true;
             _autoStartInhibit = false;
-            _autoStartCandidateSince = 0;
+            _autoStartCandidateSamples = 0;
             _autoRearmStationarySince = 0;
             Serial.println("[LOGGER] Existing recording switched to manual control");
         }
@@ -322,7 +324,7 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     }
 
     writeHeader(_file,mode); _file.flush();
-    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false; _autoStartCandidateSince=0; _autoRearmStationarySince=0;
+    _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false; _autoStartCandidateSamples=0; _autoRearmStationarySince=0;
     _aviStartGpsTimeValid=gpsTimeOfDayMilliseconds(t, _aviStartGpsTimeMs);
     _lastTelemetry=t; _haveLastTelemetry=true; _sessionGpsDropouts=0; _sessionMaxGpsPacketAgeMs=0; _sessionInvalidGpsSamples=0; _gpsStale=false; _stationaryCandidateLogged=false;
 
@@ -402,7 +404,7 @@ void RaceSyncLogger::stop(bool finalize, const char* reason)
     _manualSession=false;
     _belowSpeedSince=0;
     _stationaryCandidateLogged=false;
-    _autoStartCandidateSince=0;
+    _autoStartCandidateSamples=0;
 
     if (finalized)
     {
@@ -432,17 +434,25 @@ bool RaceSyncLogger::manualStop()
 {
     if (!_recording) return false;
     _autoStartInhibit = true;
-    _autoStartCandidateSince = 0;
+    _autoStartCandidateSamples = 0;
     _autoRearmStationarySince = 0;
     stop(true, "MANUAL");
     _autoStartInhibit = true;
-    _autoStartCandidateSince = 0;
+    _autoStartCandidateSamples = 0;
     _autoRearmStationarySince = 0;
     Serial.println("[LOGGER] Manual stop - automatic restart inhibited until healthy stationary GPS is stable for 3 seconds");
     return true;
 }
 
 void RaceSyncLogger::forceStop() { stop(true, "FORCED"); }
+
+void RaceSyncLogger::inhibitAutomaticStartUntilStationary()
+{
+    _autoStartInhibit = true;
+    _autoStartCandidateSamples = 0;
+    _autoRearmStationarySince = 0;
+    Serial.println("[LOGGER] Automatic start inhibited until fresh stationary GPS is stable for 3 seconds");
+}
 
 void RaceSyncLogger::observeGpsHealth(bool connected, bool fixValid, uint32_t packetAgeMs)
 {
@@ -494,7 +504,7 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
 
     if (!t.valid)
     {
-        _autoStartCandidateSince = 0;
+        _autoStartCandidateSamples = 0;
         _autoRearmStationarySince = 0;
         if (_recording)
         {
@@ -522,7 +532,7 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
         if (!healthyStationary)
         {
             _autoRearmStationarySince = 0;
-            _autoStartCandidateSince = 0;
+            _autoStartCandidateSamples = 0;
             return;
         }
 
@@ -537,7 +547,7 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
 
         _autoStartInhibit = false;
         _autoRearmStationarySince = 0;
-        _autoStartCandidateSince = 0;
+        _autoStartCandidateSamples = 0;
         Serial.println("[LOGGER] Automatic start re-enabled after 3 seconds of healthy stationary GPS");
     }
 
@@ -546,22 +556,23 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
         const bool startCandidate = gpsHealthyForAuto && t.velocityKmh >= _startSpeedKmh;
         if (!startCandidate)
         {
-            _autoStartCandidateSince = 0;
+            _autoStartCandidateSamples = 0;
             return;
         }
 
-        if (_autoStartCandidateSince == 0)
+        if (_autoStartCandidateSamples == 0)
         {
-            _autoStartCandidateSince = millis();
-            Serial.printf("[LOGGER] Auto-start candidate: %.1f km/h, sats=%u; confirming for 2 seconds\n",
-                          t.velocityKmh, t.satellites);
-            return;
+            Serial.printf("[LOGGER] Auto-start candidate: %.1f km/h, sats=%u; confirming with %u consecutive GPS samples\n",
+                          t.velocityKmh, t.satellites, AUTO_START_CONFIRM_SAMPLES);
         }
 
-        if (millis() - _autoStartCandidateSince < AUTO_START_CONFIRM_MS)
+        if (_autoStartCandidateSamples < AUTO_START_CONFIRM_SAMPLES)
+            ++_autoStartCandidateSamples;
+
+        if (_autoStartCandidateSamples < AUTO_START_CONFIRM_SAMPLES)
             return;
 
-        _autoStartCandidateSince = 0;
+        _autoStartCandidateSamples = 0;
         if (!start(t, mode, false))
             return;
     }
