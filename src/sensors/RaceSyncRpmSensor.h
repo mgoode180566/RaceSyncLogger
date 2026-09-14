@@ -31,9 +31,9 @@ private:
     static constexpr double RPM_MAX_CONFIGURABLE_LIMIT = 30000.0;
     static constexpr double RPM_DEBUG_MIN_ENGINE_RPM = 1000.0;
     static constexpr double RPM_LOW_SPIKE_RATIO = 0.50;
-    static constexpr double RPM_HIGH_SPIKE_RATIO = 1.50;
-    static constexpr double RPM_STEP_CONFIRM_TOLERANCE = 0.25;
-    static constexpr uint8_t RPM_STEP_CONFIRM_PULSES = 2;
+    static constexpr double RPM_HIGH_SPIKE_RATIO = 1.25;
+    static constexpr double RPM_STEP_CONFIRM_TOLERANCE = 0.15;
+    static constexpr uint8_t RPM_STEP_CONFIRM_PULSES = 3;
     static constexpr double RPM_FILTER_ALPHA = 0.25;
 
     static volatile uint32_t _rpmLastPulseUs;
@@ -58,7 +58,7 @@ private:
     uint8_t _rpmHistoryIndex = 0;
 
     // Large single-period changes are held for one pulse rather than rejected
-    // indefinitely. A second agreeing pulse confirms the new engine speed and
+    // indefinitely. Three agreeing pulses confirm the new engine speed and
     // re-seeds the filter, preventing the RPM value from latching.
     double _rpmStepCandidate = 0.0;
     uint8_t _rpmStepCandidateCount = 0;
