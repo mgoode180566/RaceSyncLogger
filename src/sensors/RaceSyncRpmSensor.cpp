@@ -148,8 +148,10 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
             if (largeLowStep || largeHighStep)
             {
                 // Do not permanently reject a large step. The first pulse is held
-                // as a candidate. A second pulse that agrees with that candidate
-                // confirms a genuine RPM change and immediately re-seeds the filter.
+                // as a candidate. Three closely agreeing pulses are required before
+                // a genuine RPM change re-seeds the filter. This rejects repeated
+                // ignition/optocoupler edges while adding only a few milliseconds
+                // of delay to a real engine-speed transition.
                 if (largeLowStep)
                 {
                     if (_rpmLowSpikeCount != UINT32_MAX) ++_rpmLowSpikeCount;
