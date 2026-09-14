@@ -231,6 +231,8 @@ The Status page shows:
 
 These diagnostics work without starting a VBO recording. The default calibration is two pulses per crankshaft revolution.
 
+The RPM plausibility filter treats an upward jump greater than 25% as suspect. It accepts the new level only after three consecutive pulse-derived readings agree within 15%. A single or inconsistent high reading is held out of the published `Revs` value and counted by the spike/rejected-reading diagnostics. Engine-off detection remains immediate after the normal signal timeout.
+
 If RPM is exactly half or double the motorcycle tachometer, the pulse-per-revolution calibration requires adjustment in the firmware.
 
 A rising rejected-reading count during an RPM dropout suggests an over-range interval. A last-pulse age exceeding 500 ms with `NO SIGNAL` indicates that accepted pulses have stopped arriving. Neither observation by itself proves that the optocoupler is faulty.
