@@ -232,11 +232,13 @@ Both automatic and manual logger starts use the same camera behaviour:
   battery installed remains available between sessions.
 - Camera status exposes Keep Alive count, age and error diagnostics.
 
-Each VBO row writes `avifileindex` as `0000` and `avisynctime` as elapsed
-GPS milliseconds from the first logged sample. The first value is `000000000`;
-later values follow actual GPS timing, including delayed or missing packet
-intervals. This provides the video/data timing reference for Circuit Tools. It
-does not place the GoPro's MP4 filename in the VBO.
+Each VBO row writes `avifileindex` as `0000`. The `avisynctime` value uses
+elapsed GPS milliseconds with a 500 ms GoPro calibration subtracted, based on a
+30 ft observed displacement at 40 mph. Values in the initial 500 ms are clamped
+to zero; later values follow actual GPS timing, including delayed or missing
+packet intervals. This advances the GPS position in Circuit Tools relative to
+the video without delaying or otherwise changing data capture. It does not place
+the GoPro's MP4 filename in the VBO.
 
 ```text
 SSID:     RaceSync
