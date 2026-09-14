@@ -125,6 +125,11 @@ void RaceSyncApi::handleStatus()
         camera["videoStartSent"] = goPro.videoStartSent;
         camera["videoStartConfirmed"] = goPro.videoStartConfirmed;
         camera["videoStartErrors"] = goPro.videoStartErrors;
+        camera["keepAliveSent"] = goPro.keepAliveSent;
+        camera["keepAliveErrors"] = goPro.keepAliveErrors;
+        camera["lastKeepAliveAgeMs"] = goPro.lastKeepAliveAgeMs == UINT32_MAX
+            ? -1 : static_cast<int64_t>(goPro.lastKeepAliveAgeMs);
+        camera["keepAliveActive"] = false;
 
         String response;
         serializeJson(doc, response);
@@ -293,6 +298,11 @@ void RaceSyncApi::handleStatus()
     camera["autoConnectSuppressed"] = goPro.autoConnectSuppressed;
     camera["autoConnectAttempts"] = goPro.autoConnectAttempts;
     camera["autoConnectSuccesses"] = goPro.autoConnectSuccesses;
+    camera["keepAliveSent"] = goPro.keepAliveSent;
+    camera["keepAliveErrors"] = goPro.keepAliveErrors;
+    camera["lastKeepAliveAgeMs"] = goPro.lastKeepAliveAgeMs == UINT32_MAX
+        ? -1 : static_cast<int64_t>(goPro.lastKeepAliveAgeMs);
+    camera["keepAliveActive"] = goPro.connected;
     camera["savedAddress"] = goPro.savedAddress;
     camera["lastError"] = goPro.lastError;
 
