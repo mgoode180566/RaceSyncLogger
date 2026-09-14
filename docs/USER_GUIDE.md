@@ -6,35 +6,63 @@ RaceSync automatically records GPS and engine RPM while the motorcycle is moving
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
-## Checking a GoPro HERO9
+## Pairing a GoPro HERO9 with RaceSync
 
-1. Update the HERO9 to firmware 1.70 or newer.
-2. Enable the camera's wireless connections and open its device-pairing screen.
-3. Power RaceSync and leave it idle. Bluetooth remains off during startup.
-4. Connect to the `RaceSync` Wi-Fi network and open `http://192.168.4.1/camera`.
-5. Select **Enable Bluetooth & Connect**. Use **Refresh status** for a new query.
-6. Inspect the camera panel for connection, recording, battery, available
-   video time, overheating, SD-card status and GPS time synchronisation.
+RaceSync uses Bluetooth Low Energy, not the GoPro Wi-Fi network, for camera
+control. HERO9 firmware 1.70 or newer is required; firmware 1.72 is supported.
 
-The first advertising camera named `GoPro XXXX` is selected and its BLE address
-is saved. On later boots RaceSync waits 15 seconds, then connects directly to
-that saved camera without scanning. If it is unavailable, RaceSync retries every
-60 seconds only while idle and stationary. On connection, RaceSync uses
-valid GPS UTC date/time to set the GoPro to UK local time, automatically applying
-GMT or BST. If GPS time is unavailable, the camera remains connected and the
-camera page reports that synchronisation was skipped.
+Complete the first pairing while RaceSync is idle:
+
+1. Power the GoPro and enable its wireless connections.
+2. On the GoPro, open its connection/pairing screen and leave it advertising.
+   Depending on the camera menu, this may be labelled **Connect Device** or
+   pairing with the GoPro app.
+3. Power RaceSync and allow startup diagnostics to finish.
+4. Join the `RaceSync` Wi-Fi network using password `racesync`.
+5. Open `http://192.168.4.1/camera`.
+6. Select **Enable Bluetooth & Connect** once.
+7. Wait for **GoPro connected — not recording**, then check battery, remaining
+   video time, SD-card status, overheating status, and GPS time sync.
+
+RaceSync connects to the advertising camera named `GoPro XXXX` and saves its
+BLE address. Keep only the intended camera in pairing mode for the first scan.
+No PIN and no RaceSync connection to the GoPro's Wi-Fi network are required.
+
+On future boots, keep the GoPro powered with wireless enabled. RaceSync waits
+15 seconds and connects directly to the saved address. If the camera is not
+available, it retries every 60 seconds only while the logger is idle and the
+motorcycle is stationary. When valid GPS time is available, RaceSync also sets
+the GoPro clock to UK local time with automatic GMT/BST handling.
 
 If the ESP32 resets during its first automatic Bluetooth attempt, RaceSync
 suppresses automatic connection on the following boot to prevent a boot loop.
-Use **Enable Bluetooth & Connect** once to restore automatic connection.
+Open the Camera page and complete one successful manual connection to restore
+automatic connection.
 
-Once connected, both automatic and manual RaceSync sessions queue GoPro video
-start and stop commands. Logging continues even if the camera is unavailable.
-The VBO `avisynctime` column starts at zero and records elapsed GPS milliseconds
-on every row, allowing a video that starts with the session to follow the same
-timeline in Circuit Tools.
+## Automatic logging with GoPro video
 
-This guide describes the `feature/gopro-auto-connect` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+Once the saved camera is connected, no camera interaction is required to record
+a session:
+
+1. Automatic logging starts when valid GPS speed reaches the configured start
+   speed. Manual logging starts when **Start Logging** is selected.
+2. RaceSync opens the VBO first, then asks the connected GoPro to start video.
+3. A blue logging flash means this session was initiated with a connected
+   camera. The usual green flash means RaceSync is logging data without an
+   initiated camera recording.
+4. Automatic logging stops after the full stationary delay. Manual logging
+   stops when **Stop Logging** is selected.
+5. RaceSync finalizes the VBO first, then asks the GoPro to stop recording.
+
+Logging never waits for the camera. If the GoPro is disconnected, busy, or
+unable to record, the RaceSync session continues normally and remains green.
+Check the Camera page before going out whenever matching video is required.
+
+The VBO `avisynctime` column starts at zero and records elapsed GPS
+milliseconds on every row. This aligns the RaceSync data timeline with video
+started for the session; the GoPro MP4 filename is not written into the VBO.
+
+This guide describes the `docs/gopro-auto-session-pairing` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 
@@ -70,7 +98,7 @@ The GPS communications test does not require a satellite position fix, so it can
 
 Automatic recording starts when valid GPS speed reaches the configured start speed. The default is **10 km/h**.
 
-If the RPM blue LED is disabled, the onboard LED gives a short green indication approximately once per second while recording. Blue RPM activity can obscure this indication when enabled.
+The onboard LED flashes approximately once per second while recording. It flashes blue when RaceSync initiated the session with a connected GoPro, and green for a data-only session. The separate RPM activity indication can overlap these flashes when enabled.
 
 ## While riding — recording has priority
 
@@ -243,8 +271,9 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 3. Obtain an outdoor GPS fix.
 4. Confirm GPS and storage are ready if using the browser pre-session.
 5. Check RPM against the bike tachometer.
-6. Disable the RPM blue LED if you want a clearer green recording indication.
-7. Leave file downloads and other session management until after the race.
+6. If video is required, power the paired GoPro and confirm **GoPro connected — not recording** on the Camera page.
+7. Confirm blue logging flashes after the session starts; green means RaceSync is logging without an initiated camera recording.
+8. Leave file downloads and other session management until after the race.
 
 ### On track
 
@@ -273,6 +302,7 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 | Session stopped unexpectedly | Preserve the VBO and matching `.log`; inspect stop reason, GPS events and write errors |
 | RPM is zero | Check accepted pulses, last-pulse age, rejected readings, optocoupler and GPIO4 wiring |
 | RPM is half/double | Correct the pulse-per-revolution calibration |
-| Blue LED hides green recording flash | Disable RPM blue LED while idle |
+| Logging flashes green when video was expected | Confirm the GoPro was powered, wireless was enabled, and the Camera page showed it connected before the session started |
+| RPM activity obscures the logging flash | Disable the RPM blue LED while idle |
 | Session missing after power loss | Reboot with SD fitted and inspect `storage.recovery` on Status |
 | Settings/reboot unavailable | Wait for the active recording to stop |
