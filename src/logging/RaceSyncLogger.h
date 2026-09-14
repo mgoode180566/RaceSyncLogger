@@ -16,6 +16,7 @@ public:
     bool manualStart(const Telemetry& telemetry, DataMode mode);
     bool manualStop();
     void forceStop();
+    void inhibitAutomaticStartUntilStationary();
     bool recording() const;
     bool manualSession() const;
     const String& currentFilename() const;
@@ -58,7 +59,7 @@ private:
     bool _recording = false;
     bool _manualSession = false;
     bool _autoStartInhibit = false;
-    uint32_t _autoStartCandidateSince = 0;
+    uint16_t _autoStartCandidateSamples = 0;
     uint32_t _autoRearmStationarySince = 0;
     File _file;
     File _logFile;
