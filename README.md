@@ -201,7 +201,11 @@ address in ESP32 NVS. No PIN or Wi-Fi connection to the GoPro is required.
 Keep only the intended GoPro in pairing mode during the first scan.
 
 On later boots RaceSync waits 15 seconds, then connects directly to the saved
-camera without scanning. Failed attempts retry every 60 seconds only while
+camera without scanning. While connected and idle, RaceSync sends the official
+BLE Keep Alive value every three seconds so an externally powered camera remains
+awake and ready for the next session. Keep Alive pauses during recording because
+the active capture already keeps the camera awake. Failed connection attempts
+retry every 60 seconds only while
 RaceSync is idle and stationary. If the ESP32 resets during its first automatic
 Bluetooth attempt, automatic connection is suppressed for the next boot to
 prevent a boot loop. Selecting **Enable Bluetooth & Connect** successfully once
@@ -224,6 +228,9 @@ Both automatic and manual logger starts use the same camera behaviour:
   session.
 - On logger stop, RaceSync safely finalizes the VBO before queuing shutter-off.
 - Camera commands never block the 25 Hz logging path.
+- RaceSync does not send the Sleep command; an externally powered GoPro with its
+  battery installed remains available between sessions.
+- Camera status exposes Keep Alive count, age and error diagnostics.
 
 Each VBO row writes `avifileindex` as `0000` and `avisynctime` as elapsed
 GPS milliseconds from the first logged sample. The first value is `000000000`;
