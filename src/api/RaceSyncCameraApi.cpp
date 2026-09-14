@@ -50,6 +50,11 @@ void RaceSyncApi::handleCameraStatus(int httpStatus)
     doc["autoConnectSuppressed"] = camera.autoConnectSuppressed;
     doc["autoConnectAttempts"] = camera.autoConnectAttempts;
     doc["autoConnectSuccesses"] = camera.autoConnectSuccesses;
+    doc["keepAliveSent"] = camera.keepAliveSent;
+    doc["keepAliveErrors"] = camera.keepAliveErrors;
+    doc["lastKeepAliveAgeMs"] = camera.lastKeepAliveAgeMs == UINT32_MAX
+        ? -1 : static_cast<int64_t>(camera.lastKeepAliveAgeMs);
+    doc["keepAliveActive"] = camera.connected && !_logger.recording();
     doc["savedAddress"] = camera.savedAddress;
     doc["lastError"] = camera.lastError;
 
