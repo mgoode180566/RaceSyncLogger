@@ -29,7 +29,11 @@ BLE address. Keep only the intended camera in pairing mode for the first scan.
 No PIN and no RaceSync connection to the GoPro's Wi-Fi network are required.
 
 On future boots, keep the GoPro powered with wireless enabled. RaceSync waits
-15 seconds and connects directly to the saved address. If the camera is not
+15 seconds and connects directly to the saved address. Once connected and idle,
+RaceSync sends a BLE Keep Alive every three seconds. This prevents the camera's
+inactivity timer from putting an externally powered camera to sleep between
+sessions. RaceSync pauses Keep Alive while video is recording and never sends
+the camera Sleep command. If the camera is not
 available, it retries every 60 seconds only while the logger is idle and the
 motorcycle is stationary. When valid GPS time is available, RaceSync also sets
 the GoPro clock to UK local time with automatic GMT/BST handling.
@@ -57,6 +61,9 @@ a session:
 Logging never waits for the camera. If the GoPro is disconnected, busy, or
 unable to record, the RaceSync session continues normally and remains green.
 Check the Camera page before going out whenever matching video is required.
+For unattended operation, fit the GoPro battery as a backup and use a stable,
+regulated USB-C supply. Keep Alive improves readiness but does not prove that
+external power is present; monitor battery percentage and overheating status.
 
 The VBO `avisynctime` column starts at zero and records elapsed GPS
 milliseconds on every row. This aligns the RaceSync data timeline with video

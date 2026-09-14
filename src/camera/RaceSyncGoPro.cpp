@@ -10,6 +10,9 @@ namespace
 {
 constexpr uint32_t AUTO_CONNECT_DELAY_MS = 15000;
 constexpr uint32_t AUTO_CONNECT_RETRY_MS = 60000;
+constexpr uint32_t KEEP_ALIVE_INTERVAL_MS = 3000;
+constexpr uint8_t KEEP_ALIVE_SETTING_ID = 0x5B;
+constexpr uint8_t KEEP_ALIVE_VALUE = 0x42;
 
 bool isGoPro(BLEAdvertisedDevice& device)
 {
@@ -140,6 +143,27 @@ void RaceSyncGoPro::beginAutoConnect()
                   static_cast<unsigned long>(AUTO_CONNECT_DELAY_MS / 1000));
 }
 
+void RaceSyncGoPro::updateKeepAlive(bool loggerRecording)
+{
+    if (loggerRecording || _settingsRequest == nullptr || _client == nullptr ||
+        !_client->isConnected() || !status().connected) return;
+
+    const uint32_t now = millis();
+    if (static_cast<int32_t>(now - _nextKeepAliveMs) < 0) return;
+    _nextKeepAliveMs = now + KEEP_ALIVE_INTERVAL_MS;
+
+    // Open GoPro Keep Alive is a Settings request containing setting 0x5B
+    // with the fixed value 0x42. This runs only while the logger is idle, so
+    // it cannot contend with session shutter commands or SD writes.
+    uint8_t request[] = {0x03, KEEP_ALIVE_SETTING_ID, 0x01, KEEP_ALIVE_VALUE};
+    _settingsRequest->writeValue(request, sizeof(request), true);
+
+    portENTER_CRITICAL(&_statusMux);
+    _status.keepAliveSent++;
+    _status.lastKeepAliveAgeMs = now;
+    portEXIT_CRITICAL(&_statusMux);
+}
+
 void RaceSyncGoPro::updateAutoConnect(const Telemetry& telemetry, bool loggerRecording)
 {
     if (!_preferencesReady || _savedAddress.length() == 0 || _autoConnectSuppressed ||
@@ -244,6 +268,7 @@ void RaceSyncGoPro::disconnect(bool suppressAutoConnect)
 {
     _queryRequest = nullptr;
     _commandRequest = nullptr;
+    _settingsRequest = nullptr;
     if (_client != nullptr && _client->isConnected()) _client->disconnect();
 
     portENTER_CRITICAL(&_statusMux);
@@ -446,9 +471,9 @@ GoProStatus RaceSyncGoPro::status() const
     GoProStatus copy = _status;
     portEXIT_CRITICAL(&_statusMux);
     if (copy.statusValid && copy.lastStatusAgeMs != UINT32_MAX)
-    {
         copy.lastStatusAgeMs = millis() - copy.lastStatusAgeMs;
-    }
+    if (copy.lastKeepAliveAgeMs != UINT32_MAX)
+        copy.lastKeepAliveAgeMs = millis() - copy.lastKeepAliveAgeMs;
     return copy;
 }
 
@@ -562,6 +587,7 @@ bool RaceSyncGoPro::connectSavedCamera(const Telemetry& telemetry)
     {
         _queryRequest = nullptr;
         _commandRequest = nullptr;
+        _settingsRequest = nullptr;
         setState("AUTO_RETRY_WAIT", "Saved GoPro did not answer; retrying while idle");
         return false;
     }
@@ -584,10 +610,12 @@ bool RaceSyncGoPro::configureConnectedClient(const char* name, const char* addre
 
     _queryRequest = service->getCharacteristic(BLEUUID(QUERY_REQUEST_UUID));
     _commandRequest = service->getCharacteristic(BLEUUID(COMMAND_REQUEST_UUID));
+    _settingsRequest = service->getCharacteristic(BLEUUID(SETTINGS_REQUEST_UUID));
     BLERemoteCharacteristic* response = service->getCharacteristic(BLEUUID(QUERY_RESPONSE_UUID));
     BLERemoteCharacteristic* commandResponse = service->getCharacteristic(BLEUUID(COMMAND_RESPONSE_UUID));
-    if (_queryRequest == nullptr || _commandRequest == nullptr || response == nullptr ||
-        commandResponse == nullptr || !response->canNotify() || !commandResponse->canNotify())
+    if (_queryRequest == nullptr || _commandRequest == nullptr || _settingsRequest == nullptr ||
+        response == nullptr || commandResponse == nullptr || !response->canNotify() ||
+        !commandResponse->canNotify())
     {
         disconnect();
         setState("ERROR", "Open GoPro query service incomplete");
@@ -633,6 +661,7 @@ bool RaceSyncGoPro::configureConnectedClient(const char* name, const char* addre
         setState("ERROR", "Unable to issue initial GoPro status query");
         return false;
     }
+    _nextKeepAliveMs = millis() + KEEP_ALIVE_INTERVAL_MS;
     return true;
 }
 
@@ -883,6 +912,7 @@ void RaceSyncGoPro::onDisconnect(BLEClient*)
 {
     _queryRequest = nullptr;
     _commandRequest = nullptr;
+    _settingsRequest = nullptr;
     portENTER_CRITICAL(&_statusMux);
     _status.connected = false;
     _status.statusValid = false;

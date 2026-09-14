@@ -350,6 +350,7 @@ void RaceSyncController::update()
 
     updateLoggingLed();
     _goPro.updateAutoConnect(_telemetry, _logger.recording());
+    _goPro.updateKeepAlive(_logger.recording());
     _api.update();
     delay(1);
 }
