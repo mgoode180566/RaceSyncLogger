@@ -65,9 +65,11 @@ For unattended operation, fit the GoPro battery as a backup and use a stable,
 regulated USB-C supply. Keep Alive improves readiness but does not prove that
 external power is present; monitor battery percentage and overheating status.
 
-The VBO `avisynctime` column starts at zero and records elapsed GPS
-milliseconds on every row. This aligns the RaceSync data timeline with video
-started for the session; the GoPro MP4 filename is not written into the VBO.
+The VBO `avisynctime` column applies a 500 ms GoPro calibration to the
+elapsed GPS time. The first 500 ms is clamped to zero, after which the value is
+GPS elapsed time minus 500 ms. This advances the mapped GPS position relative to
+the video to compensate for the measured delay; it does not delay or discard GPS
+data. The GoPro MP4 filename is not written into the VBO.
 
 This guide describes the `docs/gopro-auto-session-pairing` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
