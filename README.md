@@ -77,7 +77,7 @@ Optocoupler logic GND -> ESP32 GND
 
 Never connect the motorcycle tachometer output directly to the ESP32.
 
-RPM uses a falling-edge interrupt, rejects edges closer than 1.5 ms, and returns zero after 500 ms without an accepted pulse. Default calibration is:
+RPM uses a falling-edge interrupt, rejects edges closer than 1.5 ms, and returns zero after the signal timeout. It applies a median-of-three/EMA filter. An upward change greater than 25% is held as a candidate and must be confirmed by three consecutive raw readings agreeing within 15% before the filter is re-seeded. This removes isolated 10–11k spikes while allowing a genuine engine-speed transition after only a few pulse intervals. Default calibration is:
 
 ```cpp
 RPM_PULSES_PER_REVOLUTION = 2.0f
