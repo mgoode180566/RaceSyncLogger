@@ -56,6 +56,9 @@ struct GoProStatus
     bool autoConnectSuppressed = false;
     uint32_t autoConnectAttempts = 0;
     uint32_t autoConnectSuccesses = 0;
+    uint32_t keepAliveSent = 0;
+    uint32_t keepAliveErrors = 0;
+    uint32_t lastKeepAliveAgeMs = UINT32_MAX;
     char savedAddress[20] = "";
     char name[32] = "";
     char address[20] = "";
@@ -71,6 +74,7 @@ class RaceSyncGoPro : private BLEClientCallbacks
 public:
     void beginAutoConnect();
     void updateAutoConnect(const Telemetry& telemetry, bool loggerRecording);
+    void updateKeepAlive(bool loggerRecording);
     bool connect(const Telemetry& telemetry);
     void disconnect(bool suppressAutoConnect = false);
     bool refreshStatus();
@@ -84,6 +88,7 @@ private:
     static constexpr const char* QUERY_RESPONSE_UUID = "b5f90077-aa8d-11e3-9046-0002a5d5c51b";
     static constexpr const char* COMMAND_REQUEST_UUID = "b5f90072-aa8d-11e3-9046-0002a5d5c51b";
     static constexpr const char* COMMAND_RESPONSE_UUID = "b5f90073-aa8d-11e3-9046-0002a5d5c51b";
+    static constexpr const char* SETTINGS_REQUEST_UUID = "b5f90074-aa8d-11e3-9046-0002a5d5c51b";
     static constexpr uint8_t QUERY_STATUS_COMMAND = 0x13;
     static constexpr uint8_t SET_DATE_TIME_COMMAND = 0x0D;
 
@@ -92,6 +97,7 @@ private:
     BLEClient* _client = nullptr;
     BLERemoteCharacteristic* _queryRequest = nullptr;
     BLERemoteCharacteristic* _commandRequest = nullptr;
+    BLERemoteCharacteristic* _settingsRequest = nullptr;
     TaskHandle_t _videoStartTaskHandle = nullptr;
     TaskHandle_t _videoStopTaskHandle = nullptr;
     TaskHandle_t _autoConnectTaskHandle = nullptr;
@@ -100,6 +106,7 @@ private:
     uint8_t _savedAddressType = BLE_ADDR_TYPE_PUBLIC;
     Telemetry _autoConnectTelemetry;
     uint32_t _nextAutoConnectMs = 0;
+    uint32_t _nextKeepAliveMs = 0;
     bool _preferencesReady = false;
     bool _autoCrashGuardComplete = false;
     bool _autoConnectSuppressed = false;
