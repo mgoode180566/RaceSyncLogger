@@ -8,6 +8,9 @@ namespace
     constexpr uint8_t GPS_MIN_SATELLITES_FOR_AUTO_START = 6;
     constexpr uint32_t AUTO_START_CONFIRM_MS = 2000;
     constexpr uint32_t AUTO_REARM_STATIONARY_MS = 3000;
+    // Calibrated from on-track comparison: GPS position trailed the GoPro image
+    // by about 30 ft at 40 mph, equivalent to approximately 500 ms.
+    constexpr uint32_t GOPRO_AVI_SYNC_COMPENSATION_MS = 500;
 
     bool isLeapYear(uint16_t year)
     {
@@ -219,18 +222,28 @@ bool RaceSyncLogger::gpsTimeOfDayMilliseconds(const Telemetry& t, uint32_t& mill
 
 uint32_t RaceSyncLogger::aviElapsedMilliseconds(const Telemetry& t) const
 {
+    uint32_t elapsedMs = 0;
     uint32_t gpsTimeMs = 0;
     if (_aviStartGpsTimeValid && gpsTimeOfDayMilliseconds(t, gpsTimeMs))
     {
         constexpr uint32_t DAY_MS = 24UL * 60UL * 60UL * 1000UL;
-        return gpsTimeMs >= _aviStartGpsTimeMs
+        elapsedMs = gpsTimeMs >= _aviStartGpsTimeMs
             ? gpsTimeMs - _aviStartGpsTimeMs
             : (DAY_MS - _aviStartGpsTimeMs) + gpsTimeMs;
     }
+    else
+    {
+        // Logging normally requires valid GPS time. Keep a monotonic fallback
+        // so temporary loss of time validity never interrupts the SD write path.
+        elapsedMs = _startedMs == 0 ? 0 : millis() - _startedMs;
+    }
 
-    // Logging normally requires valid GPS time. Keep a monotonic fallback so
-    // a temporary loss of time validity never interrupts the SD write path.
-    return _startedMs == 0 ? 0 : millis() - _startedMs;
+    // The GoPro's first usable frame follows the logger start. Associate each
+    // sample with the earlier video time observed during track calibration.
+    // Clamp the pre-video samples because VBO AVI time is unsigned here.
+    return elapsedMs > GOPRO_AVI_SYNC_COMPENSATION_MS
+        ? elapsedMs - GOPRO_AVI_SYNC_COMPENSATION_MS
+        : 0;
 }
 
 void RaceSyncLogger::writeDiagnosticEvent(const char* event, const Telemetry* telemetry)
