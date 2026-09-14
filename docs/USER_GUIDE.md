@@ -144,6 +144,10 @@ Address:  http://192.168.4.1
 
 Use file-management features after the recording has stopped.
 
+Starting a session download temporarily locks out automatic logging. RaceSync clears any pending movement candidate and will not re-enable automatic start until it has received three seconds of fresh stationary GPS after the transfer. This prevents download time from being mistaken for the two-second movement confirmation.
+
+If an automatic session nevertheless starts while the bike is stationary, open **Control** and select **Stop Logging**. RaceSync accepts this for an automatic session only when GPS is fresh and valid and speed is at or below 3 km/h; it remains protected while the motorcycle may be moving.
+
 ## Session files
 
 A normal session produces a VBO recording and a matching diagnostic log:
