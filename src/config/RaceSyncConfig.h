@@ -1,10 +1,13 @@
 #pragma once
 #include <Arduino.h>
+#include "RaceSyncBuildInfo.generated.h"
 
 namespace RaceSyncConfig
 {
     constexpr const char* PRODUCT = "RaceSync";
     constexpr const char* FIRMWARE = "V2.1";
+    constexpr uint32_t BUILD_NUMBER = RACESYNC_BUILD_NUMBER;
+    constexpr const char* GIT_COMMIT = RACESYNC_GIT_COMMIT;
 
     constexpr const char* WIFI_SSID = "RaceSync";
     constexpr const char* WIFI_PASSWORD = "racesync";

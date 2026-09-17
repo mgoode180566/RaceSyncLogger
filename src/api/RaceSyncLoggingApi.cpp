@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include "../../include/Pins.h"
+#include "../config/RaceSyncConfig.h"
 
 void RaceSyncApi::beginManualLoggingRoutes()
 {
@@ -10,6 +11,9 @@ void RaceSyncApi::beginManualLoggingRoutes()
     // without competing with the active VBO write path.
     _server.on("/api/runtime", HTTP_GET, [this]() {
         JsonDocument doc;
+        doc["firmware"] = RaceSyncConfig::FIRMWARE;
+        doc["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
+        doc["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
         doc["recording"] = _logger.recording();
         doc["manual"] = _logger.manualSession();
         doc["recordingSeconds"] = _logger.recordingSeconds();

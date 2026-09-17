@@ -305,6 +305,24 @@ src/
 └── main.cpp
 ```
 
+## Firmware version and build identity
+
+Every PlatformIO build runs `scripts/generate_build_info.py`. The firmware version
+remains the deliberately assigned release value (currently `V2.1`), while the
+build number is the Git commit count and the build also records the eight-character
+commit hash. A local build with tracked uncommitted changes adds `-dirty` to the
+hash.
+
+The Status page and both `/api/status` and `/api/runtime` show values such as:
+
+```text
+V2.1 · build 184 · a1b2c3d4
+```
+
+This makes firmware built locally or by GitHub traceable to its exact repository
+state. Commit changes before producing firmware intended for the motorcycle so
+the displayed identity does not carry the `-dirty` suffix.
+
 ## Building and uploading
 
 ```text

@@ -84,6 +84,8 @@ void RaceSyncApi::handleStatus()
         JsonObject system = doc["system"].to<JsonObject>();
         system["product"] = RaceSyncConfig::PRODUCT;
         system["firmware"] = RaceSyncConfig::FIRMWARE;
+        system["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
+        system["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
         system["mode"] = dataModeName(_mode);
         system["uptimeSeconds"] = millis() / 1000;
         system["racePriorityMode"] = true;
@@ -142,6 +144,8 @@ void RaceSyncApi::handleStatus()
     JsonObject system = doc["system"].to<JsonObject>();
     system["product"] = RaceSyncConfig::PRODUCT;
     system["firmware"] = RaceSyncConfig::FIRMWARE;
+    system["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
+    system["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
     system["mode"] = dataModeName(_mode);
     system["uptimeSeconds"] = millis() / 1000;
     system["uptime"] = formatUptime();
