@@ -263,6 +263,17 @@ A session will not start with less than 1 MB free. RaceSync also protects the re
 
 Completed sessions are exposed only after the active `.part` has been successfully finalized to `.vbo`.
 
+## Checking the installed firmware
+
+Open the Status page. The release version, Git-derived build number and abbreviated
+commit are displayed below **RaceSync Device Status**, including while recording.
+The same values are available from `/api/status` and the lightweight
+`/api/runtime` endpoint.
+
+A value such as `V2.1 · build 184 · a1b2c3d4` identifies the exact source used
+for the installed firmware. A commit ending in `-dirty` was built with local
+tracked changes that had not been committed.
+
 ## Rebooting
 
 Use **Reboot RaceSync** from the Control page only while idle. Wi-Fi disappears briefly and returns after the ESP32 restarts.
