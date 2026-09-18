@@ -418,6 +418,11 @@ void RaceSyncApi::handleSessionDownloadById(uint32_t sessionId)
         sendJson(423, "{\"error\":\"Session download suspended while recording\",\"racePriorityMode\":true}");
         return;
     }
+    // A synchronous file transfer can block GPS processing for several seconds.
+    // Clear any pending start candidate and require stable stationary GPS after
+    // the transfer before automatic logging is re-enabled.
+    _logger.inhibitAutomaticStartUntilStationary();
+
     String filename;
     if (!_storage.findSessionById(sessionId, filename)) { sendJson(404, "{\"error\":\"Session not found\"}"); return; }
     File file = _storage.openRead(filename);
@@ -437,6 +442,7 @@ void RaceSyncApi::handleLegacySessionDownload(const String& filename)
         sendJson(423, "{\"error\":\"Session download suspended while recording\",\"racePriorityMode\":true}");
         return;
     }
+    _logger.inhibitAutomaticStartUntilStationary();
     if (!_storage.isSafeVBoxFilename(filename)) { sendJson(400, "{\"error\":\"Invalid session reference\"}"); return; }
     File file = _storage.openRead(filename);
     if (!file) { sendJson(404, "{\"error\":\"Session not found\"}"); return; }

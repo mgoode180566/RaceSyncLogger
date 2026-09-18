@@ -149,9 +149,21 @@ void RaceSyncApi::beginManualLoggingRoutes()
             return;
         }
 
-        if (!_logger.manualSession()) {
-            sendJson(423, "{\"stopped\":false,\"error\":\"Automatic race recording is protected from web stop\"}");
-            return;
+        const bool wasManual = _logger.manualSession();
+        if (!wasManual)
+        {
+            const uint32_t packetAgeMs = _gps.lastPacketAgeMs();
+            const bool freshStationaryGps =
+                _telemetry.valid &&
+                packetAgeMs != UINT32_MAX &&
+                packetAgeMs <= 1000 &&
+                _telemetry.velocityKmh <= _logger.stopSpeedKmh();
+
+            if (!freshStationaryGps)
+            {
+                sendJson(423, "{\"stopped\":false,\"error\":\"Automatic recording can only be cancelled with fresh stationary GPS\"}");
+                return;
+            }
         }
 
         const String file = _logger.currentFilename();
@@ -163,9 +175,18 @@ void RaceSyncApi::beginManualLoggingRoutes()
 
         // Close and finalise the VBO before touching the camera. Camera failure
         // cannot prevent the session from being safely completed.
-        if (!_logger.manualStop()) {
-            sendJson(500, "{\"stopped\":false,\"error\":\"Unable to stop logging\"}");
-            return;
+        if (wasManual)
+        {
+            if (!_logger.manualStop())
+            {
+                sendJson(500, "{\"stopped\":false,\"error\":\"Unable to stop logging\"}");
+                return;
+            }
+        }
+        else
+        {
+            _logger.forceStop();
+            _logger.inhibitAutomaticStartUntilStationary();
         }
 
         const bool cameraVideoStopQueued = _goPro.queueVideoStop();
@@ -174,7 +195,7 @@ void RaceSyncApi::beginManualLoggingRoutes()
         JsonDocument doc;
         doc["stopped"] = true;
         doc["recording"] = false;
-        doc["wasManual"] = true;
+        doc["wasManual"] = wasManual;
         doc["file"] = file;
         doc["cameraConnected"] = cameraAfterStopQueue.connected;
         doc["cameraRecording"] = cameraAfterStopQueue.recording;

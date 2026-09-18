@@ -122,6 +122,10 @@ The recording status includes the live GPS state, storage-ready flags already he
 
 Session listing, VBO download and session deletion are suspended while recording and return HTTP 423. These operations become available again after the logger returns to `IDLE`. Do not use the web interface for file management while on track.
 
+Starting a VBO download clears any pending automatic-start candidate. After the transfer, automatic logging remains inhibited until fresh GPS confirms the motorcycle is stationary for three continuous seconds. Automatic start itself requires 50 consecutive qualifying GPS samples, so time spent in a blocking web transfer cannot satisfy the two-second movement confirmation.
+
+If an automatic session starts accidentally, **Stop Logging** is accepted only when GPS is fresh, valid, and at or below the 3 km/h stop threshold. This preserves protection against stopping a genuine on-track recording while providing a safe paddock recovery path.
+
 This mode is intended to keep the SD path focused on sequential VBO writes and low-frequency diagnostic events.
 
 ## Per-session diagnostic log
