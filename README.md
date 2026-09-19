@@ -6,13 +6,13 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the `docs/gopro-auto-session-pairing` branch.
+This document describes the current RaceSync firmware on this branch.
 
 ## Current functionality
 
 - MicoAir MG-902/u-blox GPS configured for 25 Hz logging
 - Engine RPM capture from an isolated ECU tachometer signal on GPIO4
-- VBOX-compatible `.vbo` output with RPM in the `Revs` channel
+- VBOX-compatible `.vbo` output with filtered RPM in `Revs` and a duplicate `rc_rpm` channel for RaceChrono compatibility
 - Automatic recording with configurable start speed and stop delay
 - Manual start/stop from the web interface
 - FAT32 microSD storage with startup write/read/delete health test
@@ -287,11 +287,11 @@ The RPM blue activity LED can be disabled while idle without disabling RPM captu
 
 ## Sensors not yet implemented
 
-GPIO1 is reserved for a future throttle-position input and GPIO8/9 for I2C. Throttle position, IMU and brake-pressure capture are not currently implemented. Placeholder VBO columns must not be interpreted as live sensors.
+GPIO1 is reserved for a future throttle-position input and GPIO8/9 for I2C. Throttle position, IMU and brake-pressure capture are not currently implemented. Unused pressure, temperature and acceleration placeholder channels have been removed from the VBO output.
 
 ## VBO output
 
-VBO is the primary motorsport data format. It contains GPS position, speed, heading, altitude, timing, solution information and available sensor channels. RPM is written to `Revs`.
+VBO is the primary motorsport data format. It contains GPS position, speed, heading, altitude, timing and solution information. Filtered engine RPM is written to `Revs` and duplicated unchanged as `rc_rpm` for RaceChrono compatibility. The VBO no longer includes unused placeholder pressure, temperature or acceleration channels.
 
 RaceSync remains circuit-independent. Circuit recognition, start/finish detection and lap analysis are performed afterwards in software such as Circuit Tools.
 
