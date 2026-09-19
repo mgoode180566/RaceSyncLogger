@@ -148,10 +148,10 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
 
             // Reject a rise that requires physically implausible engine acceleration.
             // Use time since the last GOOD reading, not since the last electrical edge,
-            // so a rejected noise pulse cannot move the reference point. The 50k rpm/s
-            // limit is intentionally generous for a low-inertia production engine.
+            // so a rejected noise pulse cannot move the reference point. The 25k rpm/s
+            // limit remains generous for a low-inertia production engine.
             bool implausibleRise = false;
-            if (largeHighStep && _rpmLastGoodReadingUs != 0)
+            if (measuredRpm > _rpm && _rpmLastGoodReadingUs != 0)
             {
                 const uint32_t elapsedUs = nowUs - _rpmLastGoodReadingUs;
                 const double allowedRise = RPM_RISE_BASE_ALLOWANCE +
