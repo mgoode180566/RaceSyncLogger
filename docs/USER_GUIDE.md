@@ -69,7 +69,7 @@ The VBO `avisynctime` column starts at zero and records elapsed GPS
 milliseconds on every row. This aligns the RaceSync data timeline with video
 started for the session; the GoPro MP4 filename is not written into the VBO.
 
-This guide describes the `docs/gopro-auto-session-pairing` branch. GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
 
 ## Before going out
 
@@ -186,7 +186,7 @@ The browser's **NEW** indication is local to that browser/device and is not a fl
 
 Open the VBO in compatible motorsport software such as Circuit Tools. RaceSync does not require the circuit or start/finish line to be configured before riding; lap recognition and analysis happen afterwards.
 
-RPM is stored in the VBO `Revs` channel. Existing pressure, temperature and acceleration placeholder columns should not be interpreted as measurements from connected sensors.
+Filtered RPM is stored in the VBO `Revs` channel and duplicated unchanged in `rc_rpm` for RaceChrono compatibility. Unused pressure, temperature and acceleration placeholder columns have been removed, leaving only channels RaceSync currently needs for GPS, video synchronisation and RPM.
 
 ## Automatic logging settings
 
