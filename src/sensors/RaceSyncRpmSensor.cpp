@@ -148,8 +148,9 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
 
             // Reject a rise that requires physically implausible engine acceleration.
             // Use time since the last GOOD reading, not since the last electrical edge,
-            // so a rejected noise pulse cannot move the reference point. The 25k rpm/s
-            // limit remains generous for a low-inertia production engine.
+            // so a rejected noise pulse cannot move the reference point. The 10k rpm/s
+            // limit is intentionally conservative. Bench testing is unloaded;
+            // on-track drivetrain and vehicle load makes genuine RPM rise slower.
             bool implausibleRise = false;
             if (measuredRpm > _rpm && _rpmLastGoodReadingUs != 0)
             {
