@@ -124,6 +124,7 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
         _rpmHistoryIndex = 0;
         _rpmStepCandidate = 0.0;
         _rpmStepCandidateCount = 0;
+        _rpmLastGoodReadingUs = 0;
     }
     else if (newAcceptedPulse && measuredRpm > 0.0)
     {
@@ -145,7 +146,28 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
             const bool largeLowStep = measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO;
             const bool largeHighStep = measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO;
 
-            if (largeLowStep || largeHighStep)
+            // Reject a rise that requires physically implausible engine acceleration.
+            // Use time since the last GOOD reading, not since the last electrical edge,
+            // so a rejected noise pulse cannot move the reference point. The 50k rpm/s
+            // limit is intentionally generous for a low-inertia production engine.
+            bool implausibleRise = false;
+            if (largeHighStep && _rpmLastGoodReadingUs != 0)
+            {
+                const uint32_t elapsedUs = nowUs - _rpmLastGoodReadingUs;
+                const double allowedRise = RPM_RISE_BASE_ALLOWANCE +
+                    RPM_MAX_RISE_PER_SECOND * (static_cast<double>(elapsedUs) / 1000000.0);
+                implausibleRise = measuredRpm > (_rpm + allowedRise);
+            }
+
+            if (implausibleRise)
+            {
+                if (_rpmHighSpikeCount != UINT32_MAX) ++_rpmHighSpikeCount;
+                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+                acceptReading = false;
+                _rpmStepCandidate = 0.0;
+                _rpmStepCandidateCount = 0;
+            }
+            else if (largeLowStep || largeHighStep)
             {
                 // Do not permanently reject a large step. The first pulse is held
                 // as a candidate. A second pulse that agrees with that candidate
@@ -244,6 +266,7 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
                 }
             }
 
+            _rpmLastGoodReadingUs = nowUs;
             if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
             if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
         }
