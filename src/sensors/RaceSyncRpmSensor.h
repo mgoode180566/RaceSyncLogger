@@ -41,7 +41,8 @@ private:
     // RPM rise expected. Under race load through the gearbox, chain, rear wheel,
     // tyre and bike/rider mass, genuine engine acceleration will be slower.
     // This intentionally conservative limit prioritises rejecting false highs.
-    static constexpr double RPM_MAX_RISE_PER_SECOND = 10000.0;
+    static constexpr double RPM_MAX_RISE_PER_SECOND = 5000.0;
+    static constexpr double RPM_MAX_FALL_PER_SECOND = 12000.0;
     static constexpr double RPM_RISE_BASE_ALLOWANCE = 300.0;
 
     static volatile uint32_t _rpmLastPulseUs;
@@ -73,6 +74,7 @@ private:
 
     uint32_t _rpmLastPulseAgeMs = UINT32_MAX;
     uint32_t _rpmLastGoodReadingUs = 0;
+    uint32_t _rpmLastOutputUpdateUs = 0;
     bool _rpmSignalPresent = false;
     bool _rpmPreviouslySignalPresent = false;
 };
