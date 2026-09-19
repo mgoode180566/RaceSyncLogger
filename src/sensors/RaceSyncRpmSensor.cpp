@@ -120,10 +120,13 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
         // Only a genuine loss of tach pulses is allowed to drive the published
         // RPM to zero. Also discard all filter/candidate history so restart is clean.
         _rpm = 0.0;
+        _rpmTarget = 0.0;
         _rpmHistoryCount = 0;
         _rpmHistoryIndex = 0;
         _rpmStepCandidate = 0.0;
         _rpmStepCandidateCount = 0;
+        _rpmLastGoodReadingUs = 0;
+        _rpmLastOutputUpdateUs = 0;
     }
     else if (newAcceptedPulse && measuredRpm > 0.0)
     {
@@ -145,7 +148,29 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
             const bool largeLowStep = measuredRpm < _rpm * RPM_LOW_SPIKE_RATIO;
             const bool largeHighStep = measuredRpm > _rpm * RPM_HIGH_SPIKE_RATIO;
 
-            if (largeLowStep || largeHighStep)
+            // Reject a rise that requires physically implausible engine acceleration.
+            // Use time since the last GOOD reading, not since the last electrical edge,
+            // so a rejected noise pulse cannot move the reference point. The 5k rpm/s
+            // limit is intentionally conservative. Bench testing is unloaded;
+            // on-track drivetrain and vehicle load makes genuine RPM rise slower.
+            bool implausibleRise = false;
+            if (measuredRpm > _rpm && _rpmLastGoodReadingUs != 0)
+            {
+                const uint32_t elapsedUs = nowUs - _rpmLastGoodReadingUs;
+                const double allowedRise = RPM_RISE_BASE_ALLOWANCE +
+                    RPM_MAX_RISE_PER_SECOND * (static_cast<double>(elapsedUs) / 1000000.0);
+                implausibleRise = measuredRpm > (_rpm + allowedRise);
+            }
+
+            if (implausibleRise)
+            {
+                if (_rpmHighSpikeCount != UINT32_MAX) ++_rpmHighSpikeCount;
+                if (_rpmRejectedReadingCount != UINT32_MAX) ++_rpmRejectedReadingCount;
+                acceptReading = false;
+                _rpmStepCandidate = 0.0;
+                _rpmStepCandidateCount = 0;
+            }
+            else if (largeLowStep || largeHighStep)
             {
                 // Do not permanently reject a large step. The first pulse is held
                 // as a candidate. A second pulse that agrees with that candidate
@@ -244,8 +269,40 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
                 }
             }
 
+            _rpmLastGoodReadingUs = nowUs;
+            _rpmTarget = _rpm;
+
             if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
             if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
+        }
+    }
+
+    // The filtering code above computes a new target only when a pulse is accepted.
+    // Publish toward that target on EVERY sensor update so rejected/held pulses cannot
+    // accumulate a large time allowance and then jump the VBO output.
+    if (_rpmSignalPresent)
+    {
+        if (_rpmLastOutputUpdateUs == 0)
+        {
+            _rpmLastOutputUpdateUs = nowUs;
+        }
+        else
+        {
+            const uint32_t outputElapsedUs = nowUs - _rpmLastOutputUpdateUs;
+            _rpmLastOutputUpdateUs = nowUs;
+            const double dt = static_cast<double>(outputElapsedUs) / 1000000.0;
+            const double maxRise = RPM_MAX_RISE_PER_SECOND * dt;
+            const double maxFall = RPM_MAX_FALL_PER_SECOND * dt;
+
+            // Pulse filtering currently uses _rpm as its working value. If an accepted
+            // pulse changed it this pass, restore the previously published value first;
+            // the target retains the newly filtered result.
+            _rpm = previousFilteredRpm;
+
+            if (_rpmTarget > _rpm)
+                _rpm += min(_rpmTarget - _rpm, maxRise);
+            else if (_rpmTarget < _rpm)
+                _rpm -= min(_rpm - _rpmTarget, maxFall);
         }
     }
 
