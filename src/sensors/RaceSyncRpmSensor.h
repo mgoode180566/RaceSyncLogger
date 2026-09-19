@@ -58,6 +58,7 @@ private:
     uint32_t _rpmHighSpikeCount = 0;
     uint32_t _rpmZeroDropCount = 0;
     double _rpm = 0.0;
+    double _rpmTarget = 0.0;
     double _rpmRawMeasured = 0.0;
     double _rpmMinAccepted = 0.0;
     double _rpmMaxAccepted = 0.0;
