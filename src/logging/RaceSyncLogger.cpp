@@ -190,18 +190,18 @@ String RaceSyncLogger::telemetryTimestamp(const Telemetry& t) const
 void RaceSyncLogger::writeHeader(File& f, DataMode mode)
 {
     f.println("[header]");
-    f.println("satellites\ntime\nlatitude\nlongitude\nvelocity kmh\nheading\nheight\nvertical velocity m/s\nsampleperiod\nsolution type\navifileindex\navisynctime\nComboAcc\nADC3 Oil Pressure\nADC2 Oil Temp\nADC1 Water Temp\nRevs\nrc_rpm\nADC4 Fuel Pressure\nCombo_G");
+    f.println("satellites\ntime\nlatitude\nlongitude\nvelocity kmh\nheading\nheight\nvertical velocity m/s\nsampleperiod\nsolution type\navifileindex\navisynctime\nRevs\nrc_rpm");
     f.println(); f.println("[comments]"); f.println("RaceSync ESP32 Logger"); f.print("Source: "); f.println(dataModeName(mode));
     f.println(); f.println("[column names]");
-    f.println("sats time lat long velocity heading height vert-vel Tsample solution_type avifileindex avitime ComboAcc ADC3_Oil_Pressure ADC2_Oil_Temp ADC1_Water_Temp Revs rc_rpm ADC4_Fuel_Pressure Combo_G");
+    f.println("sats time lat long velocity heading height vert-vel Tsample solution_type avifileindex avitime Revs rc_rpm");
     f.println(); f.println("[data]");
 }
 
 String RaceSyncLogger::createVBoxLine(const Telemetry& t) const
 {
     char line[512];
-    snprintf(line,sizeof(line),"%03u %010.3f %+014.8f %+014.8f %07.3f %07.3f %+09.2f %+08.2f %.3f %02u %04d %09.0f %+.6E %+.6E %+.6E %+.6E %+.6E %+.6E %+.6E %+.6E",
-        t.satellites,t.rawTime,t.rawLatitude,t.rawLongitude,t.velocityKmh,t.heading,t.height,t.verticalVelocityMs,t.samplePeriod,t.solutionType,t.aviFileIndex,t.aviTime,t.comboAcc,t.oilPressure,t.oilTemperature,t.waterTemperature,t.revs,t.revs,t.fuelPressure,t.comboG);
+    snprintf(line,sizeof(line),"%03u %010.3f %+014.8f %+014.8f %07.3f %07.3f %+09.2f %+08.2f %.3f %02u %04d %09.0f %+.6E %+.6E",
+        t.satellites,t.rawTime,t.rawLatitude,t.rawLongitude,t.velocityKmh,t.heading,t.height,t.verticalVelocityMs,t.samplePeriod,t.solutionType,t.aviFileIndex,t.aviTime,t.revs,t.revs);
     return String(line);
 }
 
