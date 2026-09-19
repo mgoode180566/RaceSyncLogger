@@ -125,6 +125,7 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
         _rpmStepCandidate = 0.0;
         _rpmStepCandidateCount = 0;
         _rpmLastGoodReadingUs = 0;
+        _rpmLastOutputUpdateUs = 0;
     }
     else if (newAcceptedPulse && measuredRpm > 0.0)
     {
@@ -148,7 +149,7 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
 
             // Reject a rise that requires physically implausible engine acceleration.
             // Use time since the last GOOD reading, not since the last electrical edge,
-            // so a rejected noise pulse cannot move the reference point. The 10k rpm/s
+            // so a rejected noise pulse cannot move the reference point. The 5k rpm/s
             // limit is intentionally conservative. Bench testing is unloaded;
             // on-track drivetrain and vehicle load makes genuine RPM rise slower.
             bool implausibleRise = false;
@@ -268,6 +269,28 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
             }
 
             _rpmLastGoodReadingUs = nowUs;
+
+            // Final hard output slew limiter. This is deliberately independent of
+            // the pulse/candidate filters above: no accepted/reseeded measurement
+            // may make the published VBO RPM change faster than the physical limits.
+            // Bench testing is on an unloaded engine; on-track acceleration under
+            // drivetrain/tyre/vehicle load should be slower. Wheelspin can raise RPM
+            // quickly, but should still develop over multiple 25 Hz samples.
+            if (previousFilteredRpm > 0.0 && _rpmLastOutputUpdateUs != 0)
+            {
+                const uint32_t outputElapsedUs = nowUs - _rpmLastOutputUpdateUs;
+                const double outputElapsedSeconds =
+                    static_cast<double>(outputElapsedUs) / 1000000.0;
+                const double maxRise = RPM_MAX_RISE_PER_SECOND * outputElapsedSeconds;
+                const double maxFall = RPM_MAX_FALL_PER_SECOND * outputElapsedSeconds;
+
+                if (_rpm > previousFilteredRpm + maxRise)
+                    _rpm = previousFilteredRpm + maxRise;
+                else if (_rpm < previousFilteredRpm - maxFall)
+                    _rpm = previousFilteredRpm - maxFall;
+            }
+            _rpmLastOutputUpdateUs = nowUs;
+
             if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
             if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
         }
