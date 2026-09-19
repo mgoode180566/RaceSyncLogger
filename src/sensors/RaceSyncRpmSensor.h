@@ -33,13 +33,15 @@ private:
     static constexpr double RPM_LOW_SPIKE_RATIO = 0.50;
     static constexpr double RPM_HIGH_SPIKE_RATIO = 1.50;
     static constexpr double RPM_STEP_CONFIRM_TOLERANCE = 0.25;
-    static constexpr uint8_t RPM_STEP_CONFIRM_PULSES = 2;
+    static constexpr uint8_t RPM_STEP_CONFIRM_PULSES = 3;
     static constexpr double RPM_FILTER_ALPHA = 0.25;
 
-    // Experimental physical plausibility gate. A standard-production CB500 can
-    // gain RPM quickly when unloaded, so this is deliberately generous. It is
-    // still far below the 100k+ rpm/s implied by the observed false-high jumps.
-    static constexpr double RPM_MAX_RISE_PER_SECOND = 25000.0;
+    // Experimental physical plausibility gate. Bench tests are performed with
+    // the production-spec CB500 engine unloaded, which is the fastest genuine
+    // RPM rise expected. Under race load through the gearbox, chain, rear wheel,
+    // tyre and bike/rider mass, genuine engine acceleration will be slower.
+    // This intentionally conservative limit prioritises rejecting false highs.
+    static constexpr double RPM_MAX_RISE_PER_SECOND = 10000.0;
     static constexpr double RPM_RISE_BASE_ALLOWANCE = 300.0;
 
     static volatile uint32_t _rpmLastPulseUs;
