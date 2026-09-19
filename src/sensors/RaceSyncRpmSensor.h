@@ -39,8 +39,8 @@ private:
     // Experimental physical plausibility gate. A standard-production CB500 can
     // gain RPM quickly when unloaded, so this is deliberately generous. It is
     // still far below the 100k+ rpm/s implied by the observed false-high jumps.
-    static constexpr double RPM_MAX_RISE_PER_SECOND = 50000.0;
-    static constexpr double RPM_RISE_BASE_ALLOWANCE = 400.0;
+    static constexpr double RPM_MAX_RISE_PER_SECOND = 25000.0;
+    static constexpr double RPM_RISE_BASE_ALLOWANCE = 300.0;
 
     static volatile uint32_t _rpmLastPulseUs;
     static volatile uint32_t _rpmPeriodUs;
