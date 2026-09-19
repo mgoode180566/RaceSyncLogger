@@ -120,6 +120,7 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
         // Only a genuine loss of tach pulses is allowed to drive the published
         // RPM to zero. Also discard all filter/candidate history so restart is clean.
         _rpm = 0.0;
+        _rpmTarget = 0.0;
         _rpmHistoryCount = 0;
         _rpmHistoryIndex = 0;
         _rpmStepCandidate = 0.0;
@@ -269,30 +270,39 @@ void RaceSyncRpmSensor::update(Telemetry& telemetry)
             }
 
             _rpmLastGoodReadingUs = nowUs;
-
-            // Final hard output slew limiter. This is deliberately independent of
-            // the pulse/candidate filters above: no accepted/reseeded measurement
-            // may make the published VBO RPM change faster than the physical limits.
-            // Bench testing is on an unloaded engine; on-track acceleration under
-            // drivetrain/tyre/vehicle load should be slower. Wheelspin can raise RPM
-            // quickly, but should still develop over multiple 25 Hz samples.
-            if (previousFilteredRpm > 0.0 && _rpmLastOutputUpdateUs != 0)
-            {
-                const uint32_t outputElapsedUs = nowUs - _rpmLastOutputUpdateUs;
-                const double outputElapsedSeconds =
-                    static_cast<double>(outputElapsedUs) / 1000000.0;
-                const double maxRise = RPM_MAX_RISE_PER_SECOND * outputElapsedSeconds;
-                const double maxFall = RPM_MAX_FALL_PER_SECOND * outputElapsedSeconds;
-
-                if (_rpm > previousFilteredRpm + maxRise)
-                    _rpm = previousFilteredRpm + maxRise;
-                else if (_rpm < previousFilteredRpm - maxFall)
-                    _rpm = previousFilteredRpm - maxFall;
-            }
-            _rpmLastOutputUpdateUs = nowUs;
+            _rpmTarget = _rpm;
 
             if (_rpmMinAccepted == 0.0 || filteredInput < _rpmMinAccepted) _rpmMinAccepted = filteredInput;
             if (filteredInput > _rpmMaxAccepted) _rpmMaxAccepted = filteredInput;
+        }
+    }
+
+    // The filtering code above computes a new target only when a pulse is accepted.
+    // Publish toward that target on EVERY sensor update so rejected/held pulses cannot
+    // accumulate a large time allowance and then jump the VBO output.
+    if (_rpmSignalPresent)
+    {
+        if (_rpmLastOutputUpdateUs == 0)
+        {
+            _rpmLastOutputUpdateUs = nowUs;
+        }
+        else
+        {
+            const uint32_t outputElapsedUs = nowUs - _rpmLastOutputUpdateUs;
+            _rpmLastOutputUpdateUs = nowUs;
+            const double dt = static_cast<double>(outputElapsedUs) / 1000000.0;
+            const double maxRise = RPM_MAX_RISE_PER_SECOND * dt;
+            const double maxFall = RPM_MAX_FALL_PER_SECOND * dt;
+
+            // Pulse filtering currently uses _rpm as its working value. If an accepted
+            // pulse changed it this pass, restore the previously published value first;
+            // the target retains the newly filtered result.
+            _rpm = previousFilteredRpm;
+
+            if (_rpmTarget > _rpm)
+                _rpm += min(_rpmTarget - _rpm, maxRise);
+            else if (_rpmTarget < _rpm)
+                _rpm -= min(_rpm - _rpmTarget, maxFall);
         }
     }
 
