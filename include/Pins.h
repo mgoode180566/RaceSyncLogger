@@ -1,24 +1,27 @@
 #pragma once
 
+// Central hardware pin map for the RaceSync XIAO ESP32-S3 Plus board build.
+// Application/peripheral code must use these names rather than hard-coded GPIOs.
 namespace Pin
 {
-    constexpr int GPS_RX = 16;
-    constexpr int GPS_TX = 17;
+    // MG-902 GPS UART
+    constexpr int GPS_RX = 44; // XIAO D7: connect MG-902 TX here
+    constexpr int GPS_TX = 43; // XIAO D6: connect MG-902 RX here
 
-    constexpr int I2C_SDA = 8;
-    constexpr int I2C_SCL = 9;
+    // Reserved expansion bus
+    constexpr int I2C_SDA = 5; // XIAO D4
+    constexpr int I2C_SCL = 6; // XIAO D5
 
-    constexpr int TPS_ADC = 1;
+    // 3.3 V potentiometric throttle-position input
+    constexpr int TPS_ADC = 1; // XIAO D0 / ADC
 
     // Isolated ECU tachometer input. Connect only through the 12 V
     // optocoupler/interface; never connect the ECU signal directly.
-    constexpr int RPM_INPUT = 4;
+    constexpr int RPM_INPUT = 4; // XIAO D3
 
-    constexpr int SD_CS = 10;
-    constexpr int SD_SCK = 12;
-    constexpr int SD_MISO = 13;
-    constexpr int SD_MOSI = 11;
-
-    constexpr int LED_POWER = 2;
-    constexpr int LED_GPS = 3;
+    // microSD SPI
+    constexpr int SD_CS   = 3; // XIAO D2
+    constexpr int SD_SCK  = 7; // XIAO D8
+    constexpr int SD_MISO = 8; // XIAO D9
+    constexpr int SD_MOSI = 9; // XIAO D10
 }
