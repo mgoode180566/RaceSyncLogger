@@ -6,7 +6,9 @@ The design priority is simple: **protect the race recording first; web-interface
 
 For rider instructions, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-This document describes the current RaceSync firmware on this branch.
+This branch is the dedicated **board-development branch for the Seeed Studio XIAO ESP32-S3 Plus**. It is intended to bring up and validate the smaller RaceSync hardware while keeping the production ESP32-S3 DevKitC-1 implementation on `main` unchanged. The logger algorithms should remain functionally equivalent unless a board-specific change is required.
+
+> **Development status:** the XIAO ESP32-S3 Plus hardware has been ordered and the pin allocation below is the planned initial bench configuration. It must be verified on the physical board before motorcycle use.
 
 ## Current functionality
 
@@ -43,13 +45,36 @@ RaceSync has been used through qualifying and multiple CB500 races. VBO files im
 8. Confirm the logger has returned to `IDLE` before removing power whenever possible.
 9. Connect to the `RaceSync` Wi-Fi network at `http://192.168.4.1` and download the VBO.
 
+## XIAO ESP32-S3 Plus board development
+
+The XIAO ESP32-S3 Plus keeps RaceSync on the ESP32-S3 family while reducing the controller footprint. The initial bench build will run the MG-902 GPS, microSD interface and throttle test circuit from 3.3 V where supported. The existing isolated motorcycle-side RPM interface remains mandatory.
+
+Planned initial pin allocation:
+
+| Function | XIAO pin | ESP32-S3 GPIO |
+|---|---|---:|
+| Throttle ADC | D0 | GPIO1 |
+| SD CS | D2 | GPIO3 |
+| RPM input | D3 | GPIO4 |
+| I2C SDA / spare | D4 | GPIO5 |
+| I2C SCL / spare | D5 | GPIO6 |
+| GPS TX | D6 | GPIO43 |
+| GPS RX | D7 | GPIO44 |
+| SD SCK | D8 | GPIO7 |
+| SD MISO | D9 | GPIO8 |
+| SD MOSI | D10 | GPIO9 |
+
+The first acceptance sequence is: board/USB and firmware upload, Wi-Fi AP, GPS UART and 25 Hz data, SD initialization and sustained write test, RPM input, throttle ADC/calibration, then a full logger regression test. Do not install this board on the motorcycle until those tests pass.
+
 ## Hardware connections
 
 ### MG-902 GPS
 
 ```text
-MG-902 TX -> ESP32 GPIO16 (GPS RX)
-MG-902 RX -> ESP32 GPIO17 (GPS TX)
+MG-902 TX -> XIAO D7 / GPIO44 (GPS RX)
+MG-902 RX -> XIAO D6 / GPIO43 (GPS TX)
+MG-902 VCC -> XIAO 3V3 (initial bench configuration)
+MG-902 GND -> XIAO GND
 ```
 
 The receiver is started at 9600 baud, switched to 115200 baud, and configured for the high-rate UBX stream used for 25 Hz logging.
@@ -57,23 +82,23 @@ The receiver is started at 9600 baud, switched to 115200 baud, and configured fo
 ### MicroSD
 
 ```text
-SD VCC  -> 5 V
-SD GND  -> ESP32 GND
-SD CS   -> GPIO10
-SD MOSI -> GPIO11
-SD SCK  -> GPIO12
-SD MISO -> GPIO13
+SD VCC  -> XIAO 3V3 (initial bench test)
+SD GND  -> XIAO GND
+SD CS   -> D2 / GPIO3
+SD MOSI -> D10 / GPIO9
+SD SCK  -> D8 / GPIO7
+SD MISO -> D9 / GPIO8
 ```
 
-Use a FAT32 card. The tested SD module is powered from 5 V; ESP32 GPIO remains 3.3 V only. SPI runs conservatively at 4 MHz.
+Use a FAT32 card. For this board-development branch the initial test is at 3.3 V so the SD interface and XIAO use the same logic supply. Confirm the particular SD breakout initializes and passes sustained write testing at 3.3 V before relying on it. SPI should initially remain conservative at 4 MHz.
 
 ### ECU tachometer RPM
 
 ```text
 CB500 ECU tach output -> 12 V optocoupler input
-Optocoupler OUT       -> ESP32 GPIO4
-Optocoupler logic VCC -> ESP32 3V3
-Optocoupler logic GND -> ESP32 GND
+Optocoupler OUT       -> XIAO D3 / GPIO4
+Optocoupler logic VCC -> XIAO 3V3
+Optocoupler logic GND -> XIAO GND
 ```
 
 Never connect the motorcycle tachometer output directly to the ESP32.
@@ -91,9 +116,9 @@ Verify against the motorcycle tachometer. If indicated RPM is exactly half or do
 RaceSync supports a 3.3 V potentiometric TPS such as the Vishay 6127V1A60L.5:
 
 ```text
-ESP32 3V3 ---------------- TPS supply
-ESP32 GND ---------------- TPS ground
-TPS output ---- 1 kΩ ----- GPIO1 (ADC)
+XIAO 3V3 ----------------- TPS supply
+XIAO GND ----------------- TPS ground
+TPS output ---- 1 kΩ ----- D0 / GPIO1 (ADC)
                   |
                 100 nF
                   |
