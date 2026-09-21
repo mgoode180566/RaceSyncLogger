@@ -24,6 +24,16 @@ void RaceSyncApi::beginManualLoggingRoutes()
         doc["satellites"] = _telemetry.satellites;
         doc["speedKmh"] = _telemetry.velocityKmh;
         doc["rpm"] = _telemetry.revs;
+        doc["throttle"] = _telemetry.throttlePercent;
+        JsonObject throttle = doc["throttleDiagnostics"].to<JsonObject>();
+        throttle["percent"] = _telemetry.throttlePercent;
+        throttle["raw"] = _telemetry.throttleRaw;
+        throttle["filteredRaw"] = _telemetry.throttleFilteredRaw;
+        throttle["closedRaw"] = _telemetry.throttleClosedRaw;
+        throttle["openRaw"] = _telemetry.throttleOpenRaw;
+        throttle["calibrated"] = _telemetry.throttleCalibrated;
+        throttle["connected"] = _telemetry.throttleConnected;
+        throttle["inputPin"] = Pin::TPS_ADC;
 
         JsonObject rpm = doc["rpmDiagnostics"].to<JsonObject>();
         rpm["value"] = _telemetry.revs;

@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include "../../include/Pins.h"
 
 void RaceSyncApi::beginSettingsRoutes()
 {
@@ -159,6 +160,64 @@ void RaceSyncApi::beginSettingsRoutes()
         JsonDocument doc;
         doc["saved"] = true;
         doc["enabled"] = _telemetry.rpmLedEnabled;
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+    });
+
+    _server.on("/api/settings/throttle", HTTP_GET, [this]()
+    {
+        JsonDocument doc;
+        doc["raw"] = _throttleSensor.raw();
+        doc["filteredRaw"] = _throttleSensor.filteredRaw();
+        doc["closedRaw"] = _throttleSensor.closedRaw();
+        doc["openRaw"] = _throttleSensor.openRaw();
+        doc["percent"] = _throttleSensor.percent();
+        doc["calibrated"] = _throttleSensor.calibrated();
+        doc["connected"] = _throttleSensor.connected();
+        doc["inputPin"] = Pin::TPS_ADC;
+        doc["recording"] = _logger.recording();
+        String response;
+        serializeJson(doc, response);
+        sendJson(200, response);
+    });
+
+    _server.on("/api/settings/throttle/calibrate", HTTP_POST, [this]()
+    {
+        if (_logger.recording())
+        {
+            sendJson(409, "{\"error\":\"Stop recording before calibrating the throttle sensor\"}");
+            return;
+        }
+        JsonDocument input;
+        if (!_server.hasArg("plain") || deserializeJson(input, _server.arg("plain")) || !input["position"].is<const char*>())
+        {
+            sendJson(400, "{\"error\":\"position must be closed, open or clear\"}");
+            return;
+        }
+        const String position = input["position"].as<String>();
+        bool saved = false;
+        if (position == "closed") saved = _throttleSensor.calibrateClosed();
+        else if (position == "open") saved = _throttleSensor.calibrateOpen();
+        else if (position == "clear") saved = _throttleSensor.clearCalibration();
+        else
+        {
+            sendJson(400, "{\"error\":\"position must be closed, open or clear\"}");
+            return;
+        }
+        if (!saved)
+        {
+            sendJson(400, position == "open"
+                ? "{\"error\":\"Calibration span is too small; fully close then fully open the throttle\"}"
+                : "{\"error\":\"Unable to save throttle calibration\"}");
+            return;
+        }
+        JsonDocument doc;
+        doc["saved"] = true;
+        doc["position"] = position;
+        doc["closedRaw"] = _throttleSensor.closedRaw();
+        doc["openRaw"] = _throttleSensor.openRaw();
+        doc["calibrated"] = _throttleSensor.calibrated();
         String response;
         serializeJson(doc, response);
         sendJson(200, response);

@@ -190,18 +190,18 @@ String RaceSyncLogger::telemetryTimestamp(const Telemetry& t) const
 void RaceSyncLogger::writeHeader(File& f, DataMode mode)
 {
     f.println("[header]");
-    f.println("satellites\ntime\nlatitude\nlongitude\nvelocity kmh\nheading\nheight\nvertical velocity m/s\nsampleperiod\nsolution type\navifileindex\navisynctime\nRevs\nrc_rpm");
+    f.println("satellites\ntime\nlatitude\nlongitude\nvelocity kmh\nheading\nheight\nvertical velocity m/s\nsampleperiod\nsolution type\navifileindex\navisynctime\nRevs\nrc_rpm\nthrottle");
     f.println(); f.println("[comments]"); f.println("RaceSync ESP32 Logger"); f.print("Source: "); f.println(dataModeName(mode));
     f.println(); f.println("[column names]");
-    f.println("sats time lat long velocity heading height vert-vel Tsample solution_type avifileindex avitime Revs rc_rpm");
+    f.println("sats time lat long velocity heading height vert-vel Tsample solution_type avifileindex avitime Revs rc_rpm throttle");
     f.println(); f.println("[data]");
 }
 
 String RaceSyncLogger::createVBoxLine(const Telemetry& t) const
 {
     char line[512];
-    snprintf(line,sizeof(line),"%03u %010.3f %+014.8f %+014.8f %07.3f %07.3f %+09.2f %+08.2f %.3f %02u %04d %09.0f %+.6E %+.6E",
-        t.satellites,t.rawTime,t.rawLatitude,t.rawLongitude,t.velocityKmh,t.heading,t.height,t.verticalVelocityMs,t.samplePeriod,t.solutionType,t.aviFileIndex,t.aviTime,t.revs,t.revs);
+    snprintf(line,sizeof(line),"%03u %010.3f %+014.8f %+014.8f %07.3f %07.3f %+09.2f %+08.2f %.3f %02u %04d %09.0f %+.6E %+.6E %06.2f",
+        t.satellites,t.rawTime,t.rawLatitude,t.rawLongitude,t.velocityKmh,t.heading,t.height,t.verticalVelocityMs,t.samplePeriod,t.solutionType,t.aviFileIndex,t.aviTime,t.revs,t.revs,t.throttlePercent);
     return String(line);
 }
 

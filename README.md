@@ -1,6 +1,6 @@
 # RaceSync Motorcycle Data Logger
 
-RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. Firmware V2.1 records 25 Hz GPS and engine RPM to microSD, produces VBOX-compatible VBO sessions, and provides an onboard Wi-Fi interface for paddock configuration and file access.
+RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. Firmware V2.1 records 25 Hz GPS, engine RPM and calibrated throttle position to microSD, produces VBOX-compatible VBO sessions, and provides an onboard Wi-Fi interface for paddock configuration and file access.
 
 The design priority is simple: **protect the race recording first; web-interface convenience is secondary while the motorcycle is on track.**
 
@@ -12,7 +12,8 @@ This document describes the current RaceSync firmware on this branch.
 
 - MicoAir MG-902/u-blox GPS configured for 25 Hz logging
 - Engine RPM capture from an isolated ECU tachometer signal on GPIO4
-- VBOX-compatible `.vbo` output with filtered RPM in `Revs` and a duplicate `rc_rpm` channel for RaceChrono compatibility
+- Throttle-position capture from a 3.3 V potentiometric sensor on GPIO1, with saved two-point calibration
+- VBOX-compatible `.vbo` output with filtered RPM in `Revs`/`rc_rpm` and calibrated `throttle`
 - Automatic recording with configurable start speed and stop delay
 - Manual start/stop from the web interface
 - FAT32 microSD storage with startup write/read/delete health test
@@ -84,6 +85,30 @@ RPM_PULSES_PER_REVOLUTION = 2.0f
 ```
 
 Verify against the motorcycle tachometer. If indicated RPM is exactly half or double, adjust `RPM_PULSES_PER_REVOLUTION` in `src/sensors/RaceSyncSensors.h` and rebuild.
+
+### Throttle-position sensor
+
+RaceSync supports a 3.3 V potentiometric TPS such as the Vishay 6127V1A60L.5:
+
+```text
+ESP32 3V3 ---------------- TPS supply
+ESP32 GND ---------------- TPS ground
+TPS output ---- 1 kΩ ----- GPIO1 (ADC)
+                  |
+                100 nF
+                  |
+                 GND
+```
+
+Never allow the TPS output to exceed 3.3 V. Keep the sensor wiring away from
+ignition and HT wiring. The 1 kΩ series resistor and 100 nF capacitor should be
+mounted close to the ESP32. The sensor must not become a throttle stop or prevent
+the carburettors returning freely.
+
+The ADC is sampled at 200 Hz and lightly filtered; the latest value is attached
+to each 25 Hz GPS record. Closed and full-throttle ADC values are calibrated from
+the Control page and stored in NVM. A minimum span of 400 ADC counts prevents an
+accidental two-point calibration at nearly the same position.
 
 ## Automatic stop and GPS-dropout protection
 
@@ -273,6 +298,8 @@ The Sessions page marks recordings as **NEW** using browser-local download histo
 | GET | `/api/settings/logging` | Read automatic logging settings |
 | POST | `/api/settings/logging` | Save automatic logging settings |
 | POST | `/api/settings/rpm-led` | Save RPM blue-LED preference while idle |
+| GET | `/api/settings/throttle` | Read live TPS value and calibration |
+| POST | `/api/settings/throttle/calibrate` | Capture `closed`, `open`, or `clear` calibration while idle |
 | POST | `/api/reboot` | Restart ESP32 while idle |
 | GET | `/api/camera` | Read cached manual camera state |
 | POST | `/api/camera/connect` | Enable BLE, scan once and connect while idle |
@@ -285,13 +312,20 @@ The Status page exposes current RPM, signal-present state, accepted pulse count,
 
 The RPM blue activity LED can be disabled while idle without disabling RPM capture. Its preference survives reboot. Disabling it makes the green recording indication easier to see.
 
-## Sensors not yet implemented
+## Throttle diagnostics and calibration
 
-GPIO1 is reserved for a future throttle-position input and GPIO8/9 for I2C. Throttle position, IMU and brake-pressure capture are not currently implemented. Unused pressure, temperature and acceleration placeholder channels have been removed from the VBO output.
+The Control page shows raw and filtered GPIO1 ADC readings, sensor connection
+state, saved endpoints and calculated throttle percentage. With the engine
+stopped, capture closed throttle first, then hold the carburettors fully open and
+capture full throttle. Confirm the live display returns close to 0% and reaches
+close to 100%. Recalibrate after any sensor, bracket or linkage adjustment.
+
+GPIO8/9 remain reserved for I2C. IMU and brake-pressure capture are not currently
+implemented.
 
 ## VBO output
 
-VBO is the primary motorsport data format. It contains GPS position, speed, heading, altitude, timing and solution information. Filtered engine RPM is written to `Revs` and duplicated unchanged as `rc_rpm` for RaceChrono compatibility. The VBO no longer includes unused placeholder pressure, temperature or acceleration channels.
+VBO is the primary motorsport data format. It contains GPS position, speed, heading, altitude, timing and solution information. Filtered engine RPM is written to `Revs` and duplicated unchanged as `rc_rpm` for RaceChrono compatibility. Calibrated throttle opening is written to the custom `throttle` channel as 0–100%. RaceChrono Pro is the preferred analysis application because it imports custom VBO channels and can link external action-camera video.
 
 RaceSync remains circuit-independent. Circuit recognition, start/finish detection and lap analysis are performed afterwards in software such as Circuit Tools.
 

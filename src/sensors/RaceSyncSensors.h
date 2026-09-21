@@ -3,6 +3,7 @@
 
 #include "../config/RaceSyncTypes.h"
 #include "RaceSyncRpmSensor.h"
+#include "RaceSyncThrottleSensor.h"
 
 // Lightweight composition layer for the physical sensors used by RaceSync.
 // Dependencies are supplied explicitly by reference: no heap allocation,
@@ -10,8 +11,8 @@
 class RaceSyncSensors
 {
 public:
-    explicit RaceSyncSensors(RaceSyncRpmSensor& rpmSensor)
-        : _rpmSensor(rpmSensor)
+    RaceSyncSensors(RaceSyncRpmSensor& rpmSensor, RaceSyncThrottleSensor& throttleSensor)
+        : _rpmSensor(rpmSensor), _throttleSensor(throttleSensor)
     {
     }
 
@@ -25,4 +26,5 @@ public:
 
 private:
     RaceSyncRpmSensor& _rpmSensor;
+    RaceSyncThrottleSensor& _throttleSensor;
 };
