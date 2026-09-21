@@ -184,9 +184,53 @@ After RaceSync is idle, use the Sessions page to download completed VBO recordin
 
 The browser's **NEW** indication is local to that browser/device and is not a flag stored in the VBO.
 
-Open the VBO in compatible motorsport software such as Circuit Tools. RaceSync does not require the circuit or start/finish line to be configured before riding; lap recognition and analysis happen afterwards.
+**RaceChrono Pro is the preferred RaceSync analysis application.** RaceSync does not require the circuit or start/finish line to be configured before riding; select or create the correct circuit during import/review.
 
-Filtered RPM is stored in the VBO `Revs` channel and duplicated unchanged in `rc_rpm` for RaceChrono compatibility. Unused pressure, temperature and acceleration placeholder columns have been removed, leaving only channels RaceSync currently needs for GPS, video synchronisation and RPM.
+To import a RaceSync session and external-camera video:
+
+1. Download the completed `.vbo` from the RaceSync Sessions page while the logger is idle.
+2. Copy the VBO to the phone or tablet running RaceChrono Pro.
+3. In RaceChrono Pro open **Import**, choose the VBOX/VBO file and complete the import. Select the correct circuit/layout if prompted.
+4. Copy the camera's original MP4 files to the device. For a recording split into chapters, copy every chapter and keep the original chronological order.
+5. Open the imported session, open its **Video** list and choose **Add/Import video**. Select all MP4 chapters belonging to that session.
+6. Link the video to the session. Use automatic linking when RaceChrono offers it; otherwise select a clear shared event—passing a junction, leaving pit lane or the first obvious acceleration—and adjust the video time offset until map position, speed and picture agree.
+7. Check synchronisation at both the beginning and end. If it drifts, confirm no camera chapter is missing and that the original unedited files were used.
+8. Analyse laps using the synchronized map, speed, `rc_rpm`/RPM and custom `throttle` channels. Retain the original VBO and MP4 files even after producing an overlay export.
+
+RaceChrono Pro's menu wording can vary slightly between Android/iOS releases.
+Filtered RPM is stored in `Revs` and duplicated in `rc_rpm`; calibrated
+throttle opening is stored in `throttle` as 0–100%.
+
+Circuit Tools remains a useful alternative for VBO-only analysis.
+
+## Throttle-position calibration and track use
+
+Calibrate only while RaceSync is idle, with the motorcycle secure and the engine
+stopped:
+
+1. Check that the sensor bracket and flexible linkage cannot restrict throttle return.
+2. Switch on RaceSync and open `http://192.168.4.1/control`.
+3. Confirm the raw ADC value changes smoothly as the throttle is opened.
+4. Release the throttle fully and select **Capture Closed Throttle**.
+5. Hold the throttle fully open against the carburettor stop without forcing it, then select **Capture Full Throttle**.
+6. Release the throttle and verify approximately 0%; reopen it and verify approximately 100%.
+7. Repeat calibration after moving the sensor, bracket, carburettors or linkage.
+
+Do not ride if the linkage binds, prevents positive throttle return, or acts as a
+throttle stop. A `CHECK WIRING` indication or a value stuck at one ADC rail
+means the session may contain invalid throttle data.
+
+At a trackday or race meeting, use throttle alongside speed and RPM to compare:
+
+- where the throttle closes before each braking zone;
+- time spent coasting between closing the throttle and braking/turn-in;
+- how early and progressively throttle is reopened at corner exit;
+- partial-throttle hesitation or repeated corrections;
+- whether rising RPM produces matching acceleration in each gear.
+
+Before the first session, perform a closed/full sweep in the paddock. After each
+session, download the VBO, import it into RaceChrono Pro, attach the camera files,
+and compare a consistent lap with the fastest lap before changing technique or setup.
 
 ## Automatic logging settings
 
@@ -293,9 +337,10 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 3. Obtain an outdoor GPS fix.
 4. Confirm GPS and storage are ready if using the browser pre-session.
 5. Check RPM against the bike tachometer.
-6. If video is required, power the paired GoPro and confirm **GoPro connected — not recording** on the Camera page.
-7. Confirm blue logging flashes after the session starts; green means RaceSync is logging without an initiated camera recording.
-8. Leave file downloads and other session management until after the race.
+6. Sweep the throttle and confirm the display moves smoothly from approximately 0% to 100%.
+7. If video is required, power the paired GoPro and confirm **GoPro connected — not recording** on the Camera page.
+8. Confirm blue logging flashes after the session starts; green means RaceSync is logging without an initiated camera recording.
+9. Leave file downloads and other session management until after the race.
 
 ### On track
 
@@ -310,7 +355,7 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 3. Join `RaceSync` Wi-Fi and open `192.168.4.1`.
 4. Download the new VBO.
 5. If anything unusual happened, retain and inspect the matching `.log` file.
-6. Open the VBO in Circuit Tools or other compatible analysis software.
+6. Import the VBO into RaceChrono Pro and add the matching camera file(s).
 
 ## Troubleshooting
 
@@ -324,6 +369,8 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 | Session stopped unexpectedly | Preserve the VBO and matching `.log`; inspect stop reason, GPS events and write errors |
 | RPM is zero | Check accepted pulses, last-pulse age, rejected readings, optocoupler and GPIO4 wiring |
 | RPM is half/double | Correct the pulse-per-revolution calibration |
+| Throttle shows CHECK WIRING | Check 3.3 V, ground, signal continuity and ensure the output is not pinned to a supply rail |
+| Throttle does not reach 0/100% | Repeat closed/full calibration and inspect the sensor linkage |
 | Logging flashes green when video was expected | Confirm the GoPro was powered, wireless was enabled, and the Camera page showed it connected before the session started |
 | RPM activity obscures the logging flash | Disable the RPM blue LED while idle |
 | Session missing after power loss | Reboot with SD fitted and inspect `storage.recovery` on Status |

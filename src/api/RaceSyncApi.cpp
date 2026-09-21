@@ -11,10 +11,11 @@ RaceSyncApi::RaceSyncApi(
     RaceSyncGps& gps,
     RaceSyncWifi& wifi,
     RaceSyncGoPro& goPro,
+    RaceSyncThrottleSensor& throttleSensor,
     Telemetry& telemetry,
     DataMode& mode,
     uint32_t& bootCount)
-    : _storage(storage), _logger(logger), _gps(gps), _wifi(wifi), _goPro(goPro),
+    : _storage(storage), _logger(logger), _gps(gps), _wifi(wifi), _goPro(goPro), _throttleSensor(throttleSensor),
       _telemetry(telemetry), _mode(mode), _bootCount(bootCount)
 {
 }
@@ -366,6 +367,7 @@ void RaceSyncApi::handleTelemetry()
     channels["OilTemperature"] = _telemetry.oilTemperature;
     channels["WaterTemperature"] = _telemetry.waterTemperature;
     channels["Revs"] = _telemetry.revs;
+    channels["Throttle"] = _telemetry.throttlePercent;
     channels["FuelPressure"] = _telemetry.fuelPressure;
     channels["ComboG"] = _telemetry.comboG;
 
@@ -378,6 +380,16 @@ void RaceSyncApi::handleTelemetry()
     rpm["lastPulseAgeMs"] = _telemetry.rpmLastPulseAgeMs == UINT32_MAX ? -1 : static_cast<int64_t>(_telemetry.rpmLastPulseAgeMs);
     rpm["inputPin"] = Pin::RPM_INPUT;
     rpm["inputLevel"] = _telemetry.rpmInputLevel;
+
+    JsonObject throttle = doc["throttle"].to<JsonObject>();
+    throttle["percent"] = _telemetry.throttlePercent;
+    throttle["raw"] = _telemetry.throttleRaw;
+    throttle["filteredRaw"] = _telemetry.throttleFilteredRaw;
+    throttle["closedRaw"] = _telemetry.throttleClosedRaw;
+    throttle["openRaw"] = _telemetry.throttleOpenRaw;
+    throttle["calibrated"] = _telemetry.throttleCalibrated;
+    throttle["connected"] = _telemetry.throttleConnected;
+    throttle["inputPin"] = Pin::TPS_ADC;
 
     String response; serializeJson(doc, response); sendJson(200, response);
 }

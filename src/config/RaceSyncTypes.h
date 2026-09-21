@@ -64,6 +64,13 @@ struct Telemetry
     double rpmRawMeasured = 0.0;
     double rpmMinAccepted = 0.0;
     double rpmMaxAccepted = 0.0;
+    double throttlePercent = 0.0;
+    uint16_t throttleRaw = 0;
+    uint16_t throttleFilteredRaw = 0;
+    uint16_t throttleClosedRaw = 0;
+    uint16_t throttleOpenRaw = 0;
+    bool throttleCalibrated = false;
+    bool throttleConnected = false;
     double fuelPressure = 0.0;
     double comboG = 0.0;
 

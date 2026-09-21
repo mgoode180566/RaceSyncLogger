@@ -4,8 +4,8 @@
 #include <esp_arduino_version.h>
 
 RaceSyncController::RaceSyncController()
-    : _sensors(_rpmSensor),
-      _api(_storage, _logger, _gps, _wifi, _goPro, _telemetry, _mode, _bootCount)
+    : _sensors(_rpmSensor, _throttleSensor),
+      _api(_storage, _logger, _gps, _wifi, _goPro, _throttleSensor, _telemetry, _mode, _bootCount)
 {
 }
 

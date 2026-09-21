@@ -2,12 +2,15 @@
 
 bool RaceSyncSensors::begin()
 {
-    return _rpmSensor.begin();
+    const bool rpmReady = _rpmSensor.begin();
+    const bool throttleReady = _throttleSensor.begin();
+    return rpmReady && throttleReady;
 }
 
 void RaceSyncSensors::update(Telemetry& telemetry)
 {
     _rpmSensor.update(telemetry);
+    _throttleSensor.update(telemetry);
 }
 
 double RaceSyncSensors::rpm() const
