@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "RaceSyncBuildInfo.generated.h"
+#include "../../include/Pins.h"
 
 namespace RaceSyncConfig
 {
@@ -12,9 +13,7 @@ namespace RaceSyncConfig
     constexpr const char* WIFI_SSID = "RaceSync";
     constexpr const char* WIFI_PASSWORD = "racesync";
 
-    constexpr int GPS_RX_PIN = 16;
-    constexpr int GPS_TX_PIN = 17;
-
+    // Board GPIO assignments are centralized in include/Pins.h.\n    constexpr int GPS_RX_PIN = Pin::GPS_RX;\n    constexpr int GPS_TX_PIN = Pin::GPS_TX;\n
     // The fitted MG-902 has been verified on the bench to boot at 9600 baud
     // and output NMEA. RaceSyncGps starts at this rate and configures the
     // receiver for the high-rate UBX stream used by the logger.
@@ -24,13 +23,12 @@ namespace RaceSyncConfig
     constexpr uint32_t GPS_BOOT_GRACE_MS = 3000;
     constexpr uint32_t GPS_STALE_MS = 3000;
 
-    // microSD card - SPI mode.
-    // Wiring: CS=10, MOSI=11, SCK=12, MISO=13.
+    // microSD card - SPI mode. Pin ownership lives in include/Pins.h.
     // Reduced to 4 MHz for SD write/delete reliability testing.
-    constexpr int SD_CS_PIN = 10;
-    constexpr int SD_MOSI_PIN = 11;
-    constexpr int SD_SCK_PIN = 12;
-    constexpr int SD_MISO_PIN = 13;
+    constexpr int SD_CS_PIN = Pin::SD_CS;
+    constexpr int SD_MOSI_PIN = Pin::SD_MOSI;
+    constexpr int SD_SCK_PIN = Pin::SD_SCK;
+    constexpr int SD_MISO_PIN = Pin::SD_MISO;
     constexpr uint32_t SD_SPI_FREQUENCY = 4000000;
 
     constexpr double LOG_START_SPEED_KMH = 10.0;

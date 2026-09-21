@@ -1,5 +1,7 @@
 # RaceSync Data Logger — User Guide
 
+> **XIAO board-development edition:** this copy of the guide belongs to `board/xiao-esp32-s3-plus`. The Seeed Studio XIAO ESP32-S3 Plus hardware is under bench development and must not be treated as race-proven until the board-specific acceptance tests are complete.
+
 ## What RaceSync does
 
 RaceSync automatically records GPS and engine RPM while the motorcycle is moving. Each completed run is saved as a VBOX-compatible VBO file on microSD for analysis in software such as Circuit Tools.
@@ -69,14 +71,36 @@ The VBO `avisynctime` column starts at zero and records elapsed GPS
 milliseconds on every row. This aligns the RaceSync data timeline with video
 started for the session; the GoPro MP4 filename is not written into the VBO.
 
-GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+GPS, RPM and calibrated throttle position are the current sensor inputs on this branch. IMU and brake-pressure capture are not currently implemented.
+
+## XIAO ESP32-S3 Plus development wiring
+
+The planned initial bench wiring is:
+
+| Function | XIAO pin | GPIO |
+|---|---|---:|
+| Throttle | D0 | 1 |
+| SD CS | D2 | 3 |
+| RPM | D3 | 4 |
+| I2C SDA / spare | D4 | 5 |
+| I2C SCL / spare | D5 | 6 |
+| GPS TX | D6 | 43 |
+| GPS RX | D7 | 44 |
+| SD SCK | D8 | 7 |
+| SD MISO | D9 | 8 |
+| SD MOSI | D10 | 9 |
+
+For initial testing, power the configured MG-902 GPS and the compatible SD breakout from XIAO 3.3 V. The throttle test potentiometer also uses 3.3 V and ground, with its wiper feeding D0/GPIO1. Keep the ECU tachometer electrically isolated through the optocoupler; never connect the motorcycle 12 V tach signal directly to the XIAO.
+
+Before motorcycle installation, verify USB/firmware upload, RaceSync Wi-Fi, 25 Hz GPS reception, SD create/read/delete and sustained writes, RPM capture, throttle calibration, session finalization and power-loss recovery.
 
 ## Before going out
 
 - Fit a FAT32-formatted microSD card.
-- Power the tested SD reader/writer from 5 V with a common ground to the ESP32.
+- On the XIAO development hardware, confirm the SD breakout has passed the 3.3 V storage tests.
 - Give the GPS antenna a clear upward view.
-- Ensure the ECU tachometer signal reaches GPIO4 only through the 12 V optocoupler/isolation circuit.
+- Ensure the ECU tachometer signal reaches D3/GPIO4 only through the 12 V optocoupler/isolation circuit.
+- Confirm throttle calibration if the sensor or linkage has been disturbed.
 - Set the desired automatic start speed and stop delay while RaceSync is idle.
 
 ## Startup lights
@@ -361,7 +385,7 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 
 | Symptom | What to check |
 |---|---|
-| Red storage check | FAT32 card, SD 5 V supply, common ground and SPI wiring |
+| Red storage check | FAT32 card, XIAO 3.3 V SD supply during board development, common ground and SPI wiring |
 | Red GPS communications check | GPS power, TX/RX wiring and receiver output |
 | GPS WAITING | Move outdoors and give the antenna a clear view of the sky |
 | Recording does not start | Valid GPS fix, storage state, free space and configured start speed |
