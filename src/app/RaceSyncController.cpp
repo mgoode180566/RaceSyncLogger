@@ -275,7 +275,8 @@ void RaceSyncController::begin()
     _api.beginCameraRoutes();
     _api.begin();
     _goPro.beginAutoConnect();
-    Serial.println("[GOPRO] Bluetooth disabled at boot; saved camera will connect automatically while idle");
+    _raceChronoBle.begin();
+    Serial.println("[GOPRO] Camera client inactive at boot; saved camera will connect automatically while idle");
 
     setStatusLed(0, 0, 0);
     _loggingLedOn = false;
@@ -319,6 +320,11 @@ void RaceSyncController::update()
         const bool wasManual = _logger.manualSession();
 
         _logger.processSample(_telemetry, _mode);
+
+        // Logging has already consumed the fix. BLE receives only a copied
+        // snapshot through a non-blocking overwrite queue and can never delay
+        // this loop if the phone or Bluetooth stack is slow.
+        _raceChronoBle.submitLatest(_telemetry);
 
         const bool isRecording = _logger.recording();
         const bool isManual = _logger.manualSession();

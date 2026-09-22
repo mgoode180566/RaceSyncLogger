@@ -11,6 +11,7 @@
 #include "../sensors/RaceSyncThrottleSensor.h"
 #include "../sensors/RaceSyncSensors.h"
 #include "../camera/RaceSyncGoPro.h"
+#include "../connectivity/RaceSyncRaceChronoBle.h"
 #include "../api/RaceSyncApi.h"
 
 class RaceSyncController
@@ -45,6 +46,7 @@ private:
     RaceSyncThrottleSensor _throttleSensor;
     RaceSyncSensors _sensors;
     RaceSyncGoPro _goPro;
+    RaceSyncRaceChronoBle _raceChronoBle;
 
     Preferences _preferences;
     uint32_t _bootCount = 0;

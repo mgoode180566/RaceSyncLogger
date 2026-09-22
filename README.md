@@ -25,7 +25,32 @@ This document describes the current RaceSync firmware on this branch.
 - Live RPM diagnostics and saved RPM blue-LED preference
 - KML generation on demand only
 - GoPro HERO9 BLE pairing, saved-camera reconnection, GPS clock sync, and automatic video start/stop with logger sessions
+- GPS-only RaceChrono DIY BLE output for live speed, heading, position and fix data on a phone
 - Five-part startup diagnostics
+
+## RaceChrono live GPS
+
+RaceSync advertises as **RaceSync GPS** using RaceChrono's GPS-only DIY Bluetooth
+LE service. It sends the already-parsed MG-902 position, speed, heading,
+altitude, fix state, satellite count and GPS time to RaceChrono Pro. RPM,
+throttle and other custom channels are deliberately not transmitted.
+
+In RaceChrono Pro open **Settings → Add other device → RaceChrono DIY →
+Bluetooth LE → GPS**, then select **RaceSync GPS**. RaceChrono can use the live
+feed for its speed display, track position and lap timing. RaceSync remains the
+authoritative recorder and continues writing its complete VBO to microSD.
+
+### Logging isolation
+
+The BLE output is optional and best effort. Each GPS fix is processed by the
+logger first. Only afterwards is a fixed-size copy offered to a one-element BLE
+mailbox using a zero-wait operation. The low-priority BLE task runs separately
+on core 0; if it cannot keep up, the pending BLE fix is replaced by the latest
+one. The logger never waits for a BLE connection, notification or phone.
+
+Closing RaceChrono, switching off phone Bluetooth, moving out of range or
+reconnecting during a session must not stop, pause or delay VBO recording. SD
+logging, `.part` recovery and automatic session control do not depend on BLE.
 
 ## Proven race use
 
@@ -42,6 +67,10 @@ RaceSync has been used through qualifying and multiple CB500 races. VBO files im
 7. Back in the paddock, remain at or below 3 km/h for the configured stop delay (60 seconds by default). RaceSync finalizes the VBO and requests GoPro video stop.
 8. Confirm the logger has returned to `IDLE` before removing power whenever possible.
 9. Connect to the `RaceSync` Wi-Fi network at `http://192.168.4.1` and download the VBO.
+
+If a live phone display is wanted, connect RaceChrono Pro to **RaceSync GPS**
+before going out. This is optional; do not treat the phone connection as proof
+that the VBO is recording.
 
 ## Hardware connections
 
@@ -338,6 +367,7 @@ src/
 ├── config/     configuration and telemetry types
 ├── gps/        MG-902/u-blox interface and parser
 ├── logging/    VBO logger, recovery and SD storage
+├── connectivity/ RaceChrono GPS-only BLE publisher
 ├── sensors/    ECU RPM capture and future sensors
 ├── wifi/       RaceSync access point
 └── main.cpp

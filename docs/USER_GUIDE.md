@@ -2,7 +2,7 @@
 
 ## What RaceSync does
 
-RaceSync automatically records GPS and engine RPM while the motorcycle is moving. Each completed run is saved as a VBOX-compatible VBO file on microSD for analysis in software such as Circuit Tools.
+RaceSync automatically records GPS, engine RPM and throttle position while the motorcycle is moving. Each completed run is saved as a VBOX-compatible VBO file on microSD for analysis in software such as RaceChrono Pro or Circuit Tools. It can also provide RaceChrono Pro with a GPS-only live Bluetooth feed for speed, heading, position and lap timing.
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
@@ -69,7 +69,58 @@ The VBO `avisynctime` column starts at zero and records elapsed GPS
 milliseconds on every row. This aligns the RaceSync data timeline with video
 started for the session; the GoPro MP4 filename is not written into the VBO.
 
-GPS and RPM are the current live sensor inputs; throttle position, IMU and brake-pressure capture are not yet implemented.
+GPS, RPM and throttle position are the current logger inputs. IMU and brake-pressure capture are not yet implemented.
+
+## Using RaceChrono Pro as a live display
+
+RaceSync can act as an external GPS receiver for RaceChrono Pro. The live feed
+contains only GPS information:
+
+- position;
+- speed;
+- heading;
+- altitude;
+- valid/invalid fix state;
+- satellite count; and
+- GPS date and time.
+
+RPM, throttle position and other custom RaceSync channels are not sent over
+Bluetooth. They remain available in the recorded VBO file.
+
+To connect:
+
+1. Power RaceSync and wait for the startup checks to finish.
+2. Open RaceChrono Pro on the phone.
+3. Open **Settings** and select **Add other device**.
+4. Select **RaceChrono DIY**, then **Bluetooth LE**, then **GPS**.
+5. Select **RaceSync GPS**.
+6. Confirm that RaceChrono shows a valid external GPS fix before relying on its
+   live speed or lap display.
+
+The phone connection is optional and is not the recording-status indicator.
+RaceSync records the authoritative VBO directly to microSD whether or not a
+phone is connected.
+
+### Recording always has priority
+
+RaceSync finishes processing and logging every GPS sample before offering a
+copy to Bluetooth. Bluetooth runs as a separate low-priority task with a
+single latest-fix mailbox. It cannot build up a queue. If RaceChrono or the
+phone is slow, RaceSync discards an older unsent Bluetooth fix and retains the
+newest one instead of delaying the logger.
+
+The following events must not interrupt the VBO recording:
+
+- RaceChrono being opened or closed;
+- the phone connecting or disconnecting;
+- Bluetooth being switched off on the phone;
+- the phone moving out of range; or
+- RaceChrono failing to consume notifications quickly enough.
+
+If the phone display freezes or disconnects, continue the session normally.
+RaceSync's SD recording and automatic stop logic remain independent. After the
+session, wait for RaceSync to return to `IDLE` and download the VBO in the usual
+way.
 
 ## Before going out
 
@@ -111,6 +162,11 @@ The onboard LED flashes approximately once per second while recording. It flashe
 
 Once recording begins, RaceSync enters race-priority behaviour. The logger and sequential SD recording are given priority over paddock web features.
 
+The RaceChrono BLE GPS feed is also subordinate to recording. A fix is offered
+to Bluetooth only after the logger has processed it. RaceSync never waits for
+the phone, and a missed live-display update is preferable to delaying an SD
+write.
+
 Do not attempt to download, delete or browse sessions while on track. Session listing, VBO download and session deletion are deliberately suspended while recording and return HTTP 423 if requested.
 
 The Status page can still be opened, but while recording it uses a lightweight RAM-only status response. It avoids SD capacity checks and session-directory enumeration. This is intentional and reduces unnecessary SD work during a race.
@@ -141,6 +197,9 @@ Address:  http://192.168.4.1
 | Control `/control` | Manual logging, automatic settings and reboot |
 | Status `/status` | GPS, RPM, storage, logger and reliability diagnostics |
 | Camera `/camera` | Manually enable, connect, refresh and disconnect GoPro BLE |
+
+RaceChrono live GPS is configured in the RaceChrono Pro app rather than through
+the RaceSync web interface.
 
 Use file-management features after the recording has stopped.
 

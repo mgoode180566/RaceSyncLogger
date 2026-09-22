@@ -225,7 +225,9 @@ bool RaceSyncGoPro::initialiseBluetooth()
     Serial.println("[GOPRO] Manual request: initialising framework BLE");
     setState("INITIALISING");
     _instance = this;
-    BLEDevice::init("RaceSync");
+    // RaceChrono GPS may already own the shared ESP32 BLE framework. Reuse it
+    // rather than reinitialising the controller and disrupting advertising.
+    if (!BLEDevice::getInitialized()) BLEDevice::init("RaceSync");
     BLEDevice::setPower(ESP_PWR_LVL_P3);
     configureGoProBleSecurity();
 
