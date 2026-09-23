@@ -1,6 +1,8 @@
 #include "RaceSyncRaceChronoBle.h"
 
+#ifndef CONFIG_NIMBLE_ENABLED
 #include <BLE2902.h>
+#endif
 #include <cmath>
 
 namespace
@@ -35,8 +37,12 @@ bool RaceSyncRaceChronoBle::begin()
         GPS_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
     _timeCharacteristic = service->createCharacteristic(
         TIME_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+#ifndef CONFIG_NIMBLE_ENABLED
+    // Bluedroid requires an explicit CCCD. NimBLE creates it automatically
+    // for NOTIFY characteristics and deprecates manual BLE2902 descriptors.
     _gpsCharacteristic->addDescriptor(new BLE2902());
     _timeCharacteristic->addDescriptor(new BLE2902());
+#endif
 
     uint8_t invalidGps[20] = {0, 0, 0, 0, 0x7F, 0xFF, 0xFF, 0xFF,
                               0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
