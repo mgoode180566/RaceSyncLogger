@@ -31,7 +31,8 @@ This document describes the current RaceSync firmware on this branch.
 ## RaceChrono live GPS
 
 RaceSync advertises as **RaceSync GPS** using RaceChrono's GPS-only DIY Bluetooth
-LE service. It sends the already-parsed MG-902 position, speed, heading,
+LE service. The service is advertised explicitly as the 16-bit UUID `0x1FF8`
+so that RaceChrono's filtered device scan can discover it. It sends the already-parsed MG-902 position, speed, heading,
 altitude, fix state, satellite count and GPS time to RaceChrono Pro. RPM,
 throttle and other custom channels are deliberately not transmitted.
 

@@ -97,6 +97,11 @@ To connect:
 6. Confirm that RaceChrono shows a valid external GPS fix before relying on its
    live speed or lap display.
 
+Do not connect to or pair RaceSync from Android's Bluetooth settings. Android
+may show any transmitting BLE device, whereas RaceChrono discovers RaceSync by
+its advertised 16-bit DIY service UUID `0x1FF8`. Initiate the connection from
+RaceChrono Pro.
+
 The phone connection is optional and is not the recording-status indicator.
 RaceSync records the authoritative VBO directly to microSD whether or not a
 phone is connected.

@@ -34,9 +34,12 @@ private:
         double bearingDeg;
     };
 
-    static constexpr const char* SERVICE_UUID = "00001ff8-0000-1000-8000-00805f9b34fb";
-    static constexpr const char* GPS_UUID = "00000003-0000-1000-8000-00805f9b34fb";
-    static constexpr const char* TIME_UUID = "00000004-0000-1000-8000-00805f9b34fb";
+    // Keep these as 16-bit UUIDs. RaceChrono filters scan results using the
+    // 16-bit service advertisement field and will ignore an equivalent UUID
+    // advertised in the 128-bit field.
+    static constexpr uint16_t SERVICE_UUID = 0x1FF8;
+    static constexpr uint16_t GPS_UUID = 0x0003;
+    static constexpr uint16_t TIME_UUID = 0x0004;
 
     QueueHandle_t _queue = nullptr;
     TaskHandle_t _task = nullptr;

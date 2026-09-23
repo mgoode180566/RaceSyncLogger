@@ -32,11 +32,12 @@ bool RaceSyncRaceChronoBle::begin()
 
     BLEServer* server = BLEDevice::createServer();
     server->setCallbacks(new RaceChronoServerCallbacks());
-    BLEService* service = server->createService(SERVICE_UUID);
+    const BLEUUID serviceUuid(SERVICE_UUID);
+    BLEService* service = server->createService(serviceUuid);
     _gpsCharacteristic = service->createCharacteristic(
-        GPS_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+        BLEUUID(GPS_UUID), BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
     _timeCharacteristic = service->createCharacteristic(
-        TIME_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+        BLEUUID(TIME_UUID), BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 #ifndef CONFIG_NIMBLE_ENABLED
     // Bluedroid requires an explicit CCCD. NimBLE creates it automatically
     // for NOTIFY characteristics and deprecates manual BLE2902 descriptors.
@@ -53,8 +54,10 @@ bool RaceSyncRaceChronoBle::begin()
     service->start();
 
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
-    advertising->addServiceUUID(SERVICE_UUID);
-    advertising->setScanResponse(true);
+    advertising->setMinInterval(32);
+    advertising->setMaxInterval(160);
+    advertising->addServiceUUID(serviceUuid);
+    advertising->setScanResponse(false);
     advertising->start();
 
     // Core 0, priority 1: deliberately below the Arduino loop and storage path.
