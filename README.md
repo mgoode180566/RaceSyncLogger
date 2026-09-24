@@ -47,7 +47,7 @@ RaceSync has been used through qualifying and multiple CB500 races. VBO files im
 
 ## XIAO ESP32-S3 Plus board development
 
-The XIAO ESP32-S3 Plus keeps RaceSync on the ESP32-S3 family while reducing the controller footprint. The initial bench build will run the MG-902 GPS, microSD interface and throttle test circuit from 3.3 V where supported. The existing isolated motorcycle-side RPM interface remains mandatory.
+The XIAO ESP32-S3 Plus keeps RaceSync on the ESP32-S3 family while reducing the controller footprint. Power the MG-902 from the development board's configured 5 V GPS output. Its UART signals use 3.3 V logic. The compatible microSD interface and throttle test circuit use 3.3 V. The existing isolated motorcycle-side RPM interface remains mandatory.
 
 Planned initial pin allocation:
 
@@ -68,16 +68,19 @@ The first acceptance sequence is: board/USB and firmware upload, Wi-Fi AP, GPS U
 
 ## Hardware connections
 
+See the [complete wiring schematic](docs/XIAO_WIRING_SCHEMATIC.md) for the power, GPS, microSD and isolated RPM connections.
+
 ### MG-902 GPS
 
 ```text
 MG-902 TX -> XIAO D7 / GPIO44 (GPS RX)
 MG-902 RX -> XIAO D6 / GPIO43 (GPS TX)
-MG-902 VCC -> XIAO 3V3 (initial bench configuration)
+MG-902 VCC -> development board's configured 5 V GPS output
 MG-902 GND -> XIAO GND
 ```
 
 The receiver is started at 9600 baud, switched to 115200 baud, and configured for the high-rate UBX stream used for 25 Hz logging.
+The MG-902 supply is 5 V; its TX/RX UART interface uses 3.3 V logic. Do not connect its VCC to the 3V3 output for this build.
 
 ### MicroSD
 
