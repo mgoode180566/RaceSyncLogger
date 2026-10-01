@@ -77,6 +77,8 @@ GPS, RPM and calibrated throttle position are the current sensor inputs on this 
 
 The planned initial bench wiring is:
 
+See the [complete wiring schematic](XIAO_WIRING_SCHEMATIC.md) for the GPS 5 V supply, SPI storage and isolated RPM input.
+
 | Function | XIAO pin | GPIO |
 |---|---|---:|
 | Throttle | D0 | 1 |
@@ -90,7 +92,7 @@ The planned initial bench wiring is:
 | SD MISO | D9 | 8 |
 | SD MOSI | D10 | 9 |
 
-For initial testing, power the configured MG-902 GPS and the compatible SD breakout from XIAO 3.3 V. The throttle test potentiometer also uses 3.3 V and ground, with its wiper feeding D0/GPIO1. Keep the ECU tachometer electrically isolated through the optocoupler; never connect the motorcycle 12 V tach signal directly to the XIAO.
+For initial testing, power the MG-902 from the development board's configured 5 V GPS output; its UART TX/RX signals use 3.3 V logic. Power a compatible SD breakout from XIAO 3.3 V. The throttle test potentiometer also uses 3.3 V and ground, with its wiper feeding D0/GPIO1. Keep the ECU tachometer electrically isolated through the optocoupler; never connect the motorcycle 12 V tach signal directly to the XIAO.
 
 Before motorcycle installation, verify USB/firmware upload, RaceSync Wi-Fi, 25 Hz GPS reception, SD create/read/delete and sustained writes, RPM capture, throttle calibration, session finalization and power-loss recovery.
 
