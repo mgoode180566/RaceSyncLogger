@@ -1,6 +1,6 @@
 # RaceSync Motorcycle Data Logger
 
-RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. Firmware V2.1 records 25 Hz GPS, engine RPM and calibrated throttle position to microSD, produces VBOX-compatible VBO sessions, and provides an onboard Wi-Fi interface for paddock configuration and file access.
+RaceSync is a standalone ESP32-S3 motorcycle data logger for Honda CB500 track and race use. Firmware V2.1 supports both ESP32-S3 DevKitC-1 and Seeed Studio XIAO ESP32-S3 Plus builds and records 25 Hz GPS, engine RPM and calibrated throttle position to microSD, produces VBOX-compatible VBO sessions, and provides an onboard Wi-Fi interface for paddock configuration and file access.
 
 The design priority is simple: **protect the race recording first; web-interface convenience is secondary while the motorcycle is on track.**
 
@@ -38,7 +38,7 @@ RaceSync has been used through qualifying and multiple CB500 races. VBO files im
 3. Before first use, pair the GoPro from the RaceSync Camera page. Later boots reconnect to the saved camera automatically while RaceSync is idle.
 4. Confirm the Camera page reports **GoPro connected — not recording** before going out if video is required.
 5. Ride away. Automatic logging begins when valid GPS speed reaches the configured start speed (10 km/h by default), and RaceSync requests GoPro video start for the same session.
-6. While logging, green flashes mean a data-only session; blue flashes mean RaceSync initiated the session with a connected camera.
+6. On the RGB DevKit, green flashes indicate data-only logging and blue flashes indicate a session initiated with a connected camera. The XIAO has one LED colour; confirm camera readiness on the Camera page.
 7. Back in the paddock, remain at or below 3 km/h for the configured stop delay (60 seconds by default). RaceSync finalizes the VBO and requests GoPro video stop.
 8. Confirm the logger has returned to `IDLE` before removing power whenever possible.
 9. Connect to the `RaceSync` Wi-Fi network at `http://192.168.4.1` and download the VBO.
@@ -88,6 +88,17 @@ specify `-e` for the XIAO. GitHub Actions builds both targets and produces
 separately named firmware artifacts. The Status page, `/api/status`,
 `/api/runtime` and startup serial output identify the selected board.
 
+### Selecting a target in VS Code / PlatformIO
+
+Open PlatformIO **Project Tasks**, expand the environment matching your physical board, and use its **Build**, **Upload** and **Monitor** tasks. Do not use a generic Upload task for the XIAO: the default environment is the DevKit.
+
+| Physical board | PlatformIO environment |
+|---|---|
+| ESP32-S3 DevKitC-1 | `esp32-s3-devkitc-1` |
+| Seeed Studio XIAO ESP32-S3 Plus | `racesync-xiao-esp32-s3-plus` |
+
+Before changing boards, stop recording and switch off power. Check the signal wiring against the table above. After upload, confirm the displayed board name matches the hardware before starting a session. The displayed name identifies the compiled target; it is not automatic hardware detection.
+
 ### LED differences
 
 The DevKit retains its existing RGB indications. The XIAO uses its single-colour,
@@ -115,13 +126,17 @@ elsewhere in this guide apply to the RGB DevKit only.
 Keep the proven firmware available and leave `main` unchanged until both boards
 pass these physical tests.
 
-## Hardware connections — DevKit reference
+## Hardware connections
+
+Use the board-specific signal table above. The detailed wiring below shows the DevKit; substitute the XIAO signal pins when using that board.
 
 ### MG-902 GPS
 
 ```text
 MG-902 TX -> ESP32 GPIO16 (GPS RX)
 MG-902 RX -> ESP32 GPIO17 (GPS TX)
+MG-902 VCC -> regulated 5 V (fitted 5 V configuration)
+MG-902 GND -> ESP32 GND
 ```
 
 The receiver is started at 9600 baud, switched to 115200 baud, and configured for the high-rate UBX stream used for 25 Hz logging.
@@ -382,7 +397,7 @@ The Sessions page marks recordings as **NEW** using browser-local download histo
 
 The Status page exposes current RPM, signal-present state, accepted pulse count, rejected over-range readings, last-pulse age and GPIO4 input level. These counters are live debugging aids and reset on reboot; they are not VBO channels.
 
-The RPM blue activity LED can be disabled while idle without disabling RPM capture. Its preference survives reboot. Disabling it makes the green recording indication easier to see.
+RPM activity can be disabled while idle through `POST /api/settings/rpm-led` with JSON `{"enabled":false}`. Its preference survives reboot. Activity is blue on the RGB DevKit and single-colour on the XIAO; disabling it makes recording flashes easier to see.
 
 ## Throttle diagnostics and calibration
 
@@ -392,7 +407,7 @@ stopped, capture closed throttle first, then hold the carburettors fully open an
 capture full throttle. Confirm the live display returns close to 0% and reaches
 close to 100%. Recalibrate after any sensor, bracket or linkage adjustment.
 
-GPIO8/9 remain reserved for I2C. IMU and brake-pressure capture are not currently
+I2C SDA/SCL remain reserved on GPIO8/9 for the DevKit and GPIO5/6 (D4/D5) for the XIAO. On the XIAO, GPIO8/9 are SD SPI signals. IMU and brake-pressure capture are not currently
 implemented.
 
 ## VBO output
@@ -426,7 +441,7 @@ hash.
 The Status page and both `/api/status` and `/api/runtime` show values such as:
 
 ```text
-V2.1 · build 184 · a1b2c3d4
+XIAO ESP32-S3 Plus · V2.1 · build 184 · a1b2c3d4
 ```
 
 This makes firmware built locally or by GitHub traceable to its exact repository
@@ -436,7 +451,8 @@ the displayed identity does not carry the `-dirty` suffix.
 ## Building and uploading
 
 ```text
-platformio run
-platformio run --target upload
-platformio device monitor
+pio run -e esp32-s3-devkitc-1
+pio run -e esp32-s3-devkitc-1 -t upload --upload-port COM4
+pio device monitor -e esp32-s3-devkitc-1 --port COM4
 ```
+
