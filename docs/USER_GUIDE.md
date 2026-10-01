@@ -6,6 +6,78 @@ RaceSync automatically records GPS and engine RPM while the motorcycle is moving
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
+## Selecting the board and building firmware
+
+One codebase supports the ESP32-S3 DevKitC-1 (16 MB flash / 8 MB octal PSRAM)
+and Seeed Studio XIAO ESP32-S3 Plus. Select the target before uploading; the
+firmware cannot identify the carrier board automatically. Other DevKit memory
+variants require their own memory settings.
+
+| Connection | DevKit GPIO | XIAO pin / GPIO |
+|---|---:|---|
+| GPS TX to logger RX | 16 | D7 / 44 |
+| GPS RX to logger TX | 17 | D6 / 43 |
+| SD CS | 10 | D2 / 3 |
+| SD SCK | 12 | D8 / 7 |
+| SD MISO | 13 | D9 / 8 |
+| SD MOSI | 11 | D10 / 9 |
+| Isolated RPM input | 4 | D3 / 4 |
+| TPS signal | 1 | D0 / 1 |
+| Reserved I2C SDA / SCL | 8 / 9 | D4 / 5, D5 / 6 |
+
+For the fitted 5 V MG-902 and the existing 5 V SD breakout, use the 5 V
+supply and common ground. Peripheral signal levels must remain 3.3 V.
+TPS and the logic side of the RPM optocoupler use 3.3 V. A bare microSD
+card requires 3.3 V; use the supply required by the specific breakout.
+USB power provides the XIAO 5 V rail; do not assume battery-only power does.
+
+Build either target:
+
+```bash
+pio run -e esp32-s3-devkitc-1
+pio run -e racesync-xiao-esp32-s3-plus
+```
+
+Upload using the matching target, for example:
+
+```bash
+pio run -e racesync-xiao-esp32-s3-plus -t upload --upload-port COM4
+pio device monitor -e racesync-xiao-esp32-s3-plus --port COM4
+```
+
+Replace COM4 with the actual port. Without an explicit port PlatformIO attempts
+auto-detection. The default build/upload target remains the DevKit; always
+specify `-e` for the XIAO. GitHub Actions builds both targets and produces
+separately named firmware artifacts. The Status page, `/api/status`,
+`/api/runtime` and startup serial output identify the selected board.
+
+### LED differences
+
+The DevKit retains its existing RGB indications. The XIAO uses its single-colour,
+active-LOW user LED on GPIO21: startup checks retain their flash counts, but
+pass/fail and camera/data-only colours cannot be distinguished. Use serial
+startup diagnostics and the web Status/Camera pages for those results.
+Recording and RPM activity share the XIAO LED; disable the RPM activity option
+if it obscures recording flashes. References to red, green or blue indicators
+elsewhere in this guide apply to the RGB DevKit only.
+
+### Acceptance checks on each physical board
+
+1. Build both targets successfully and upload the matching one. Verify the board
+   name, 16 MB flash and 8 MB PSRAM in startup/status diagnostics.
+2. Confirm Wi-Fi access, SD health-test pass and outdoor GPS reception; measure
+   actual GPS sample rate rather than relying on the configured 25 Hz label.
+3. Check RPM against the bike tachometer and calibrate/sweep TPS from 0 to 100%.
+4. Record for at least 30 minutes. Pass: a finalized VBO imports into RaceChrono,
+   contains continuous expected samples and has no unexplained storage faults.
+5. Pair the GoPro and verify video starts/stops with manual and automatic sessions.
+6. Download a session while stationary. Pass: no unwanted automatic recording starts.
+7. On a disposable test session, remove power while recording and reboot.
+   Pass: the recovered VBO imports and retains complete rows.
+
+Keep the proven firmware available and leave `main` unchanged until both boards
+pass these physical tests.
+
 ## Pairing a GoPro HERO9 with RaceSync
 
 RaceSync uses Bluetooth Low Energy, not the GoPro Wi-Fi network, for camera

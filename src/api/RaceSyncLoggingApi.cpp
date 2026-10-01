@@ -12,6 +12,7 @@ void RaceSyncApi::beginManualLoggingRoutes()
     _server.on("/api/runtime", HTTP_GET, [this]() {
         JsonDocument doc;
         doc["firmware"] = RaceSyncConfig::FIRMWARE;
+        doc["boardModel"] = Board::NAME;
         doc["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
         doc["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
         doc["recording"] = _logger.recording();
