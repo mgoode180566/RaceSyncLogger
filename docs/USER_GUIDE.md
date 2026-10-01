@@ -2,7 +2,7 @@
 
 ## What RaceSync does
 
-RaceSync automatically records GPS and engine RPM while the motorcycle is moving. Each completed run is saved as a VBOX-compatible VBO file on microSD for analysis in software such as Circuit Tools.
+RaceSync supports the ESP32-S3 DevKitC-1 and Seeed Studio XIAO ESP32-S3 Plus. It automatically records GPS, engine RPM and calibrated throttle position while the motorcycle is moving. Each completed run is saved as a VBOX-compatible VBO file on microSD for analysis in software such as Circuit Tools.
 
 The normal race-day workflow is deliberately simple: **power it on, check it, ride, wait for it to stop, then download the session.** No rider interaction is required on track.
 
@@ -50,6 +50,17 @@ auto-detection. The default build/upload target remains the DevKit; always
 specify `-e` for the XIAO. GitHub Actions builds both targets and produces
 separately named firmware artifacts. The Status page, `/api/status`,
 `/api/runtime` and startup serial output identify the selected board.
+
+### Selecting a target in VS Code / PlatformIO
+
+Open PlatformIO **Project Tasks**, expand the environment matching your physical board, and use its **Build**, **Upload** and **Monitor** tasks. Do not use a generic Upload task for the XIAO: the default environment is the DevKit.
+
+| Physical board | PlatformIO environment |
+|---|---|
+| ESP32-S3 DevKitC-1 | `esp32-s3-devkitc-1` |
+| Seeed Studio XIAO ESP32-S3 Plus | `racesync-xiao-esp32-s3-plus` |
+
+Before changing boards, stop recording and switch off power. Check the signal wiring against the table above. After upload, confirm the displayed board name matches the hardware before starting a session. The displayed name identifies the compiled target; it is not automatic hardware detection.
 
 ### LED differences
 
@@ -123,15 +134,13 @@ a session:
 1. Automatic logging starts when valid GPS speed reaches the configured start
    speed. Manual logging starts when **Start Logging** is selected.
 2. RaceSync opens the VBO first, then asks the connected GoPro to start video.
-3. A blue logging flash means this session was initiated with a connected
-   camera. The usual green flash means RaceSync is logging data without an
-   initiated camera recording.
+3. On the RGB DevKit, blue logging flashes indicate a session initiated with a connected camera; green indicates data-only logging. The XIAO cannot distinguish these states by colour: use the Camera page.
 4. Automatic logging stops after the full stationary delay. Manual logging
    stops when **Stop Logging** is selected.
 5. RaceSync finalizes the VBO first, then asks the GoPro to stop recording.
 
 Logging never waits for the camera. If the GoPro is disconnected, busy, or
-unable to record, the RaceSync session continues normally and remains green.
+unable to record, the RaceSync data session continues normally. On the RGB DevKit it uses the green logging indication.
 Check the Camera page before going out whenever matching video is required.
 For unattended operation, fit the GoPro battery as a backup and use a stable,
 regulated USB-C supply. Keep Alive improves readiness but does not prove that
@@ -153,7 +162,7 @@ GPS and RPM are the current live sensor inputs; throttle position, IMU and brake
 
 ## Startup lights
 
-RaceSync performs five startup checks. Green flashes mean pass and red flashes mean fail; the number of flashes identifies the check.
+RaceSync performs five startup checks. On the RGB DevKit, green means pass and red means fail. The XIAO uses one colour for both outcomes, so inspect serial diagnostics or the Status page. Flash counts identify the check on both boards.
 
 | Flashes | Check |
 |---:|---|
@@ -163,7 +172,7 @@ RaceSync performs five startup checks. Green flashes mean pass and red flashes m
 | 4 | GPS receiver communications |
 | 5 | sensor subsystem including RPM input setup |
 
-Five blue flashes indicate that the startup sequence is complete.
+Five completion flashes indicate that startup has finished: blue on the RGB DevKit, single-colour on the XIAO. Completion alone does not mean every check passed.
 
 The GPS communications test does not require a satellite position fix, so it can pass while the Status page still shows GPS waiting for a fix. Do not use the logger for a race session if the storage check fails.
 
@@ -177,7 +186,7 @@ The GPS communications test does not require a satellite position fix, so it can
 
 Automatic recording starts when valid GPS speed reaches the configured start speed. The default is **10 km/h**.
 
-The onboard LED flashes approximately once per second while recording. It flashes blue when RaceSync initiated the session with a connected GoPro, and green for a data-only session. The separate RPM activity indication can overlap these flashes when enabled.
+The onboard LED flashes approximately once per second while recording. On the RGB DevKit, blue indicates a session initiated with a connected GoPro and green indicates data-only logging. The XIAO uses the same colour for both. RPM activity can overlap recording flashes when enabled.
 
 ## While riding — recording has priority
 
@@ -357,11 +366,11 @@ A rising rejected-reading count during an RPM dropout suggests an over-range int
 
 RPM diagnostic counters reset on reboot and are not persistent VBO channels.
 
-## RPM blue LED
+## RPM activity LED
 
-The **RPM blue LED** option on the Status page controls only the onboard RPM activity indication. It does not disable RPM capture or logging.
+The RPM activity setting controls only the onboard LED indication, not RPM capture or logging. The simplified UI does not currently provide a switch; while idle, send `POST /api/settings/rpm-led` with JSON `{"enabled":false}` to disable it or `{"enabled":true}` to enable it. The indication is blue on the RGB DevKit and single-colour on the XIAO.
 
-Change the option only while idle. The preference is saved and survives reboot. At normal engine speed the 60 ms activity indications can overlap and appear almost continuously blue, so disabling the option is useful when you want the green recording indication to remain obvious.
+Change the setting only while idle. It survives reboot. At normal engine speed, the 60 ms activity indications can overlap and appear continuously lit; disabling activity makes recording flashes easier to see on either board.
 
 ## Unexpected power loss
 
@@ -385,12 +394,12 @@ Completed sessions are exposed only after the active `.part` has been successful
 
 ## Checking the installed firmware
 
-Open the Status page. The release version, Git-derived build number and abbreviated
+Open the Status page. The selected board, release version, Git-derived build number and abbreviated
 commit are displayed below **RaceSync Device Status**, including while recording.
 The same values are available from `/api/status` and the lightweight
 `/api/runtime` endpoint.
 
-A value such as `V2.1 · build 184 · a1b2c3d4` identifies the exact source used
+A value such as `XIAO ESP32-S3 Plus · V2.1 · build 184 · a1b2c3d4` identifies the exact source used
 for the installed firmware. A commit ending in `-dirty` was built with local
 tracked changes that had not been committed.
 
@@ -411,7 +420,7 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 5. Check RPM against the bike tachometer.
 6. Sweep the throttle and confirm the display moves smoothly from approximately 0% to 100%.
 7. If video is required, power the paired GoPro and confirm **GoPro connected — not recording** on the Camera page.
-8. Confirm blue logging flashes after the session starts; green means RaceSync is logging without an initiated camera recording.
+8. Confirm recording has started. On the RGB DevKit, blue indicates camera-associated logging and green indicates data-only logging. On the XIAO, check camera readiness in the paddock because LED colour cannot confirm it.
 9. Leave file downloads and other session management until after the race.
 
 ### On track
@@ -443,7 +452,8 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 | RPM is half/double | Correct the pulse-per-revolution calibration |
 | Throttle shows CHECK WIRING | Check 3.3 V, ground, signal continuity and ensure the output is not pinned to a supply rail |
 | Throttle does not reach 0/100% | Repeat closed/full calibration and inspect the sensor linkage |
-| Logging flashes green when video was expected | Confirm the GoPro was powered, wireless was enabled, and the Camera page showed it connected before the session started |
-| RPM activity obscures the logging flash | Disable the RPM blue LED while idle |
+| RGB DevKit logging flashes green when video was expected | Confirm the GoPro was powered, wireless was enabled, and the Camera page showed it connected before the session started |
+| RPM activity obscures the logging flash | Disable activity while idle using the RPM activity setting described above |
 | Session missing after power loss | Reboot with SD fitted and inspect `storage.recovery` on Status |
 | Settings/reboot unavailable | Wait for the active recording to stop |
+
