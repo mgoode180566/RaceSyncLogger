@@ -152,9 +152,9 @@ bool RaceSyncController::waitForGpsTraffic(uint32_t timeoutMs)
     return false;
 }
 
-void RaceSyncController::flashDiagnosticResult(uint8_t code, bool passed)
+void RaceSyncController::flashDiagnosticResult(uint8_t code, bool passed, bool warning)
 {
-    const uint8_t red = passed ? 0 : 48;
+    const uint8_t red = (!passed || warning) ? 48 : 0;
     const uint8_t green = passed ? 48 : 0;
 
     for (uint8_t i = 0; i < code; ++i)
@@ -188,8 +188,19 @@ uint8_t RaceSyncController::runStartupDiagnostics()
     Serial.print("[DIAG] 2 microSD/storage ........ ");
     const bool storageMounted = _storage.begin();
     const bool storageHealthy = storageMounted && _storage.runHealthCheck();
-    const bool sdOk = storageHealthy && _storage.usingSd();
-    if (sdOk) Serial.println("PASS");
+    const uint64_t totalStorage = storageHealthy ? _storage.totalBytes() : 0;
+    const uint64_t usedStorage = storageHealthy ? _storage.usedBytes() : 0;
+    const bool sdOk = storageHealthy && _storage.usingSd() &&
+                      totalStorage > 0 && usedStorage <= totalStorage;
+    // Compare bytes before rounding: exactly 80% used remains green.
+    const bool lowSpace = sdOk && usedStorage * 5ULL > totalStorage * 4ULL;
+    if (sdOk)
+    {
+        Serial.printf("%s (%.2f%% used, %llu bytes free)\n",
+                      lowSpace ? "WARNING: SD space above 80% used" : "PASS",
+                      (usedStorage * 100.0) / totalStorage,
+                      totalStorage - usedStorage);
+    }
     else
     {
         Serial.print("FAIL");
@@ -198,7 +209,7 @@ uint8_t RaceSyncController::runStartupDiagnostics()
         Serial.println();
         failures |= (1U << (DIAG_STORAGE - 1));
     }
-    flashDiagnosticResult(DIAG_STORAGE, sdOk);
+    flashDiagnosticResult(DIAG_STORAGE, sdOk, lowSpace);
 
     Serial.print("[DIAG] 3 logger ................. ");
     const bool loggerOk = _logger.begin(_storage);

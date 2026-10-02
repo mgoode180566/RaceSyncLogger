@@ -162,7 +162,7 @@ GPS and RPM are the current live sensor inputs; throttle position, IMU and brake
 
 ## Startup lights
 
-RaceSync performs five startup checks. On the RGB DevKit, green means pass and red means fail. The XIAO uses one colour for both outcomes, so inspect serial diagnostics or the Status page. Flash counts identify the check on both boards.
+RaceSync performs five startup checks. On the RGB DevKit, green means pass and red means fail. The microSD check flashes yellow when the card is healthy but more than 80% used. The XIAO uses one colour for all outcomes, so inspect serial diagnostics or the Status page. Flash counts identify the check on both boards.
 
 | Flashes | Check |
 |---:|---|
@@ -173,6 +173,8 @@ RaceSync performs five startup checks. On the RGB DevKit, green means pass and r
 | 5 | sensor subsystem including RPM input setup |
 
 Five completion flashes indicate that startup has finished: blue on the RGB DevKit, single-colour on the XIAO. Completion alone does not mean every check passed.
+
+For the two-flash microSD check, red takes priority for a missing card or storage error; yellow means more than 80% of filesystem capacity is used; green means 80% or less is used. Serial diagnostics show the percentage used and free bytes. Yellow does not block recording, but download and delete old sessions before going out. Space is checked after startup recovery, at boot only; the LED does not continuously monitor remaining capacity.
 
 The GPS communications test does not require a satellite position fix, so it can pass while the Status page still shows GPS waiting for a fix. Do not use the logger for a race session if the storage check fails.
 
