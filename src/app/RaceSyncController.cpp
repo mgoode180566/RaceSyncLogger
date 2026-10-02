@@ -19,7 +19,9 @@ void RaceSyncController::incrementBootCount()
 
 void RaceSyncController::setStatusLed(uint8_t red, uint8_t green, uint8_t blue)
 {
-#if defined(RGB_BUILTIN)
+#if defined(RACESYNC_BOARD_XIAO_S3_PLUS)
+    digitalWrite(Board::STATUS_LED, (red || green || blue) ? LOW : HIGH);
+#elif defined(RGB_BUILTIN)
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
     rgbLedWrite(RGB_BUILTIN, red, green, blue);
 #else
@@ -249,9 +251,13 @@ void RaceSyncController::begin()
     Serial.println();
     Serial.println("=============================");
     Serial.println(" RaceSync V2.1 Modular");
+    Serial.printf("[BOARD] %s\n", Board::NAME);
     Serial.println("=============================");
 
-#if defined(LED_BUILTIN) && !defined(RGB_BUILTIN)
+#if defined(RACESYNC_BOARD_XIAO_S3_PLUS)
+    pinMode(Board::STATUS_LED, OUTPUT);
+    digitalWrite(Board::STATUS_LED, HIGH);
+#elif defined(LED_BUILTIN) && !defined(RGB_BUILTIN)
     pinMode(LED_BUILTIN, OUTPUT);
 #endif
 

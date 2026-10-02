@@ -85,6 +85,7 @@ void RaceSyncApi::handleStatus()
         JsonObject system = doc["system"].to<JsonObject>();
         system["product"] = RaceSyncConfig::PRODUCT;
         system["firmware"] = RaceSyncConfig::FIRMWARE;
+        system["boardModel"] = Board::NAME;
         system["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
         system["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
         system["mode"] = dataModeName(_mode);
@@ -145,6 +146,7 @@ void RaceSyncApi::handleStatus()
     JsonObject system = doc["system"].to<JsonObject>();
     system["product"] = RaceSyncConfig::PRODUCT;
     system["firmware"] = RaceSyncConfig::FIRMWARE;
+    system["boardModel"] = Board::NAME;
     system["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
     system["gitCommit"] = RaceSyncConfig::GIT_COMMIT;
     system["mode"] = dataModeName(_mode);
@@ -155,7 +157,7 @@ void RaceSyncApi::handleStatus()
     system["racePriorityMode"] = false;
 
     JsonObject board = doc["board"].to<JsonObject>();
-    board["model"] = "ESP32-S3 DevKitC-1";
+    board["model"] = Board::NAME;
     board["chipModel"] = ESP.getChipModel();
     board["chipRevision"] = ESP.getChipRevision();
     board["cores"] = ESP.getChipCores();
