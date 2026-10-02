@@ -101,9 +101,16 @@ Before changing boards, stop recording and switch off power. Check the signal wi
 
 ### LED differences
 
+At boot, the two-flash microSD check is red for a storage error, yellow when
+a healthy card is more than 80% used, and green at 80% used or below. Usage
+is measured against filesystem capacity after startup recovery. Yellow is a
+warning and does not block logging: delete or download old sessions before
+going out. Serial diagnostics report the usage and free bytes. This check
+runs at startup; it does not provide a continuous low-space LED warning.
+
 The DevKit retains its existing RGB indications. The XIAO uses its single-colour,
 active-LOW user LED on GPIO21: startup checks retain their flash counts, but
-pass/fail and camera/data-only colours cannot be distinguished. Use serial
+pass/warning/fail and camera/data-only colours cannot be distinguished. Use serial
 startup diagnostics and the web Status/Camera pages for those results.
 Recording and RPM activity share the XIAO LED; disable the RPM activity option
 if it obscures recording flashes. References to red, green or blue indicators

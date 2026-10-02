@@ -71,6 +71,6 @@ private:
 
     uint8_t runStartupDiagnostics();
     bool waitForGpsTraffic(uint32_t timeoutMs);
-    void flashDiagnosticResult(uint8_t code, bool passed);
+    void flashDiagnosticResult(uint8_t code, bool passed, bool warning = false);
     void showDiagnosticComplete();
 };
