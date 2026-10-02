@@ -457,3 +457,7 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 | Session missing after power loss | Reboot with SD fitted and inspect `storage.recovery` on Status |
 | Settings/reboot unavailable | Wait for the active recording to stop |
 
+
+## Deleting a stored session
+
+While RaceSync is idle, open the Sessions page and select **Delete** beside the session. Confirm the filename in the prompt. Download a copy first if needed: deletion is permanent. The VBO and any saved KML are removed from microSD; the diagnostic `.log` is retained. The list updates after successful deletion, and failures are displayed on the page. Deletion is blocked during recording and buttons are disabled while a deletion request is in progress.
