@@ -456,3 +456,7 @@ pio run -e esp32-s3-devkitc-1 -t upload --upload-port COM4
 pio device monitor -e esp32-s3-devkitc-1 --port COM4
 ```
 
+
+## Deleting a stored session
+
+While RaceSync is idle, open the Sessions page and select **Delete** beside the session. Confirm the filename in the prompt. Download a copy first if needed: deletion is permanent. The VBO and any saved KML are removed from microSD; the diagnostic `.log` is retained. The list updates after successful deletion, and failures are displayed on the page. Deletion is blocked during recording and buttons are disabled while a deletion request is in progress.
