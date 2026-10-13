@@ -207,21 +207,52 @@ bool RaceSyncStorage::findSessionById(uint32_t sessionId, String& filename)
     root.close(); _readable = true; return found;
 }
 
-bool RaceSyncStorage::deleteSessionById(uint32_t sessionId, String& deletedFilename)
+bool RaceSyncStorage::archiveSessionById(uint32_t sessionId, String& archivedFilename)
 {
-    deletedFilename = "";
+    archivedFilename = "";
+    if (!_ready || !_writable || _fs == nullptr) { setError("SD storage is not writable"); return false; }
     String filename;
-    if (!findSessionById(sessionId, filename) || !isSafeVBoxFilename(filename)) { setError("Session not found for delete"); return false; }
+    if (!findSessionById(sessionId, filename) || !isSafeVBoxFilename(filename)) { setError("Session not found for archive"); return false; }
+    const String archivePath = pathFor("archive");
+    if (!_fs->exists(archivePath) && !_fs->mkdir(archivePath)) { setError("Unable to create archive folder"); return false; }
+    File directory = _fs->open(archivePath, FILE_READ);
+    const bool isDirectory = directory && directory.isDirectory();
+    if (directory) directory.close();
+    if (!isDirectory) { setError("Archive path is not a directory"); return false; }
 
-    const String kmlFilename = filename.substring(0, filename.length() - 4) + ".kml";
-    const bool hasKml = fileExists(kmlFilename);
-
-    if (!removeFile(filename)) return false;
-    if (hasKml && !removeFile(kmlFilename)) return false;
-
-    deletedFilename = filename;
+    // Move companions first, VBO last. A failed operation leaves the session
+    // visible in the root and attempts to restore any companions already moved.
+    const String base = filename.substring(0, filename.length() - 4);
+    std::vector<String> files;
+    if (fileExists(base + ".log")) files.push_back(base + ".log");
+    if (fileExists(base + ".kml")) files.push_back(base + ".kml");
+    files.push_back(filename);
+    for (const String& name : files) {
+        if (_fs->exists(archivePath + "/" + name)) {
+            setError("Archive already contains " + name + "; no files moved");
+            return false;
+        }
+    }
+    std::vector<String> moved;
+    for (const String& name : files) {
+        const String destination = archivePath + "/" + name;
+        const bool renamed = _fs->rename(pathFor(name), destination);
+        if (renamed) moved.push_back(name);
+        if (!renamed || _fs->exists(pathFor(name)) || !_fs->exists(destination)) {
+            bool restored = true;
+            for (auto it = moved.rbegin(); it != moved.rend(); ++it) {
+                const String original = pathFor(*it);
+                const String archived = archivePath + "/" + *it;
+                if (_fs->exists(original) || !_fs->rename(archived, original))
+                    restored = false;
+            }
+            setError("Unable to archive " + name + (restored ? "; moved files restored" : "; check root and archive folder"));
+            return false;
+        }
+    }
+    archivedFilename = filename;
     _lastError = "";
-    Serial.printf("[STORE] Deleted session %u: %s%s\n", sessionId, filename.c_str(), hasKml ? " + KML" : "");
+    Serial.printf("[STORE] Archived session %u: %s\n", sessionId, filename.c_str());
     return true;
 }
 
@@ -248,7 +279,7 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         const String& filename = info.filename;
         uint32_t id = sessionIdForFilename(filename);
         bool active = activeFilename.length() && filename == activeFilename;
-        bool deletable = !active;
+        bool archivable = !active;
         // Completed VBO sessions can always be converted to KML on demand.
         // No persistent KML companion is written during recording.
         bool kmlAvailable = !active;
@@ -259,13 +290,13 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         session["sizeBytes"] = info.sizeBytes;
         session["complete"] = !active;
         session["active"] = active;
-        session["deletable"] = deletable;
+        session["archivable"] = archivable;
         session["generatedByRaceSync"] = filename.startsWith("RS_");
         session["downloadUrl"] = "/api/sessions/" + String(id);
         session["hasKml"] = kmlAvailable;
         session["kmlGeneratedOnDemand"] = true;
         if (kmlAvailable) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id);
-        if (deletable) session["deleteUrl"] = "/api/sessions/" + String(id);
+        if (archivable) session["archiveUrl"] = "/api/sessions/" + String(id) + "/archive";
     }
 }
 
@@ -509,3 +540,4 @@ void RaceSyncStorage::recoverInterruptedSessions()
 uint64_t RaceSyncStorage::totalBytes() const { return _ready ? SD.totalBytes() : 0; }
 uint64_t RaceSyncStorage::usedBytes() const { return _ready ? SD.usedBytes() : 0; }
 uint64_t RaceSyncStorage::freeBytes() const { uint64_t total = totalBytes(), used = usedBytes(); return total >= used ? total - used : 0; }
+

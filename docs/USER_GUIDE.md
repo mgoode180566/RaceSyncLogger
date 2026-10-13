@@ -174,7 +174,7 @@ RaceSync performs five startup checks. On the RGB DevKit, green means pass and r
 
 Five completion flashes indicate that startup has finished: blue on the RGB DevKit, single-colour on the XIAO. Completion alone does not mean every check passed.
 
-For the two-flash microSD check, red takes priority for a missing card or storage error; yellow means more than 80% of filesystem capacity is used; green means 80% or less is used. Serial diagnostics show the percentage used and free bytes. Yellow does not block recording, but download and delete old sessions before going out. Space is checked after startup recovery, at boot only; the LED does not continuously monitor remaining capacity.
+For the two-flash microSD check, red takes priority for a missing card or storage error; yellow means more than 80% of filesystem capacity is used; green means 80% or less is used. Serial diagnostics show the percentage used and free bytes. Yellow does not block recording, but download old sessions and remove them using a computer before going out. Space is checked after startup recovery, at boot only; the LED does not continuously monitor remaining capacity.
 
 The GPS communications test does not require a satellite position fix, so it can pass while the Status page still shows GPS waiting for a fix. Do not use the logger for a race session if the storage check fails.
 
@@ -194,7 +194,7 @@ The onboard LED flashes approximately once per second while recording. On the RG
 
 Once recording begins, RaceSync enters race-priority behaviour. The logger and sequential SD recording are given priority over paddock web features.
 
-Do not attempt to download, delete or browse sessions while on track. Session listing, VBO download and session deletion are deliberately suspended while recording and return HTTP 423 if requested.
+Do not attempt to download, archive or browse sessions while on track. Session listing, VBO download and session archiving are deliberately suspended while recording and return HTTP 423 if requested.
 
 The Status page can still be opened, but while recording it uses a lightweight RAM-only status response. It avoids SD capacity checks and session-directory enumeration. This is intentional and reduces unnecessary SD work during a race.
 
@@ -460,6 +460,11 @@ The last-session diagnostic values shown in `/api/status` are held in RAM and th
 | Settings/reboot unavailable | Wait for the active recording to stop |
 
 
-## Deleting a stored session
+## Archiving a stored session
 
-While RaceSync is idle, open the Sessions page and select **Delete** beside the session. Confirm the filename in the prompt. Download a copy first if needed: deletion is permanent. The VBO and any saved KML are removed from microSD; the diagnostic `.log` is retained. The list updates after successful deletion, and failures are displayed on the page. Deletion is blocked during recording and buttons are disabled while a deletion request is in progress.
+While RaceSync is idle, select **Archive** beside a completed session and confirm the filename. RaceSync creates `/archive` if necessary and moves the VBO, matching diagnostic `.log` and any saved `.kml` into it. Session lists and counts inspect only the SD root and never scan subfolders, so archived sessions disappear from the list and their summaries are not read. Archiving is blocked during recording. An existing destination filename causes an error rather than an overwrite; failed moves attempt to restore files already moved.
+
+Archiving keeps the data on the same SD card and does **not** free space or provide a backup. Copy archived files to a computer before removing them to reclaim capacity. To restore a session, power off RaceSync and move its files from `/archive` back to the SD root using a computer, avoiding duplicate filenames. Interrupted multi-file moves may need the same manual reconciliation.
+
+The UI uses `POST /api/sessions/{id}/archive`, returning `archived: true` and `archivePath` on success. The old `DELETE /api/sessions/{id}` endpoint now also archives, for older UI clients; it never permanently deletes a session and returns the archive response rather than `deleted: true`.
+
