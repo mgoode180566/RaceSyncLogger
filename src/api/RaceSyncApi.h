@@ -55,10 +55,11 @@ private:
     void handleCameraStatus(int httpStatus = 200);
     void handleSessionDownloadById(uint32_t sessionId);
     void handleSessionKmlDownloadById(uint32_t sessionId);
-    void handleSessionDeleteById(uint32_t sessionId);
+    void handleSessionArchiveById(uint32_t sessionId);
     void handleLegacySessionDownload(const String& filename);
     bool parseSessionIdFromUri(uint32_t& sessionId);
     static String formatUptime();
     static String formatVBoxTime(double rawTime);
     static const char* resetReasonName();
 };
+

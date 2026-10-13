@@ -104,7 +104,7 @@ Before changing boards, stop recording and switch off power. Check the signal wi
 At boot, the two-flash microSD check is red for a storage error, yellow when
 a healthy card is more than 80% used, and green at 80% used or below. Usage
 is measured against filesystem capacity after startup recovery. Yellow is a
-warning and does not block logging: delete or download old sessions before
+warning and does not block logging: download old sessions and remove them using a computer before
 going out. Serial diagnostics report the usage and free bytes. This check
 runs at startup; it does not provide a continuous low-space LED warning.
 
@@ -239,7 +239,7 @@ and storage reports:
 
 The recording status includes the live GPS state, storage-ready flags already held in memory, current file, sample count, recording duration, write-error count and last-write age.
 
-Session listing, VBO download and session deletion are suspended while recording and return HTTP 423. These operations become available again after the logger returns to `IDLE`. Do not use the web interface for file management while on track.
+Session listing, VBO download and session archiving are suspended while recording and return HTTP 423. These operations become available again after the logger returns to `IDLE`. Do not use the web interface for file management while on track.
 
 Starting a VBO download clears any pending automatic-start candidate. After the transfer, automatic logging remains inhibited until fresh GPS confirms the motorcycle is stationary for three continuous seconds. Automatic start itself requires 50 consecutive qualifying GPS samples, so time spent in a blocking web transfer cannot satisfy the two-second movement confirmation.
 
@@ -385,7 +385,8 @@ The Sessions page marks recordings as **NEW** using browser-local download histo
 | GET | `/api/telemetry` | Current GPS/sensor telemetry including RPM |
 | GET | `/api/sessions` | Completed sessions; suspended while recording |
 | GET | `/api/sessions/{id}` | Download VBO; suspended while recording |
-| DELETE | `/api/sessions/{id}` | Delete completed session; suspended while recording |
+| POST | `/api/sessions/{id}/archive` | Archive completed session and companions; suspended while recording |
+| DELETE | `/api/sessions/{id}` | Legacy archive alias; does not delete files |
 | GET | `/api/session-kml?id={id}` | Generate KML from a completed VBO |
 | POST | `/api/logging/start` | Start manual logging |
 | POST | `/api/logging/stop` | Stop/finalize active logging |
@@ -464,6 +465,11 @@ pio device monitor -e esp32-s3-devkitc-1 --port COM4
 ```
 
 
-## Deleting a stored session
+## Archiving a stored session
 
-While RaceSync is idle, open the Sessions page and select **Delete** beside the session. Confirm the filename in the prompt. Download a copy first if needed: deletion is permanent. The VBO and any saved KML are removed from microSD; the diagnostic `.log` is retained. The list updates after successful deletion, and failures are displayed on the page. Deletion is blocked during recording and buttons are disabled while a deletion request is in progress.
+While RaceSync is idle, select **Archive** beside a completed session and confirm the filename. RaceSync creates `/archive` if necessary and moves the VBO, matching diagnostic `.log` and any saved `.kml` into it. Session lists and counts inspect only the SD root and never scan subfolders, so archived sessions disappear from the list and their summaries are not read. Archiving is blocked during recording. An existing destination filename causes an error rather than an overwrite; failed moves attempt to restore files already moved.
+
+Archiving keeps the data on the same SD card and does **not** free space or provide a backup. Copy archived files to a computer before removing them to reclaim capacity. To restore a session, power off RaceSync and move its files from `/archive` back to the SD root using a computer, avoiding duplicate filenames. Interrupted multi-file moves may need the same manual reconciliation.
+
+The UI uses `POST /api/sessions/{id}/archive`, returning `archived: true` and `archivePath` on success. The old `DELETE /api/sessions/{id}` endpoint now also archives, for older UI clients; it never permanently deletes a session and returns the archive response rather than `deleted: true`.
+

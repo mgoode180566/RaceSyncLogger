@@ -47,7 +47,7 @@ public:
     uint32_t sessionCount();
     uint32_t sessionIdForFilename(const String& filename) const;
     bool findSessionById(uint32_t sessionId, String& filename);
-    bool deleteSessionById(uint32_t sessionId, String& deletedFilename);
+    bool archiveSessionById(uint32_t sessionId, String& archivedFilename);
     void addSessionsToJson(JsonArray sessions, const String& activeFilename = "");
 
     uint64_t totalBytes() const;
@@ -82,3 +82,4 @@ private:
     String availableRecoveredFilename(const String& partFilename) const;
     void setError(const String& message);
 };
+
