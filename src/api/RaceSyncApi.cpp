@@ -418,6 +418,8 @@ bool RaceSyncApi::parseSessionIdFromUri(uint32_t& sessionId)
     const String prefix = "/api/sessions/";
     String value = _server.uri().substring(prefix.length());
     if (_server.method() == HTTP_POST && value.endsWith("/archive")) value = value.substring(0, value.length() - 8);
+    if (_server.method() == HTTP_GET && value.endsWith("/laps")) value = value.substring(0, value.length() - 5);
+    if (_server.method() == HTTP_GET && value.endsWith("/lap-metadata")) value = value.substring(0, value.length() - 13);
     if (value.length() == 0) return false;
     for (size_t i = 0; i < value.length(); i++) if (value[i] < '0' || value[i] > '9') return false;
     unsigned long parsed = strtoul(value.c_str(), nullptr, 10);
@@ -447,6 +449,26 @@ void RaceSyncApi::handleSessionDownloadById(uint32_t sessionId)
     _server.sendHeader("X-RaceSync-Session-Id", String(sessionId));
     _server.sendHeader("Cache-Control", "no-store");
     _server.streamFile(file, "application/octet-stream");
+    file.close();
+}
+
+void RaceSyncApi::handleLapDownloadById(uint32_t sessionId, bool metadata)
+{
+    if (_logger.recording()) {
+        sendJson(423, "{\"error\":\"Lap download suspended while recording\"}"); return;
+    }
+    _logger.inhibitAutomaticStartUntilStationary();
+    String vbo;
+    if (!_storage.findSessionById(sessionId, vbo)) {
+        sendJson(404, "{\"error\":\"Session not found\"}"); return;
+    }
+    const String name = vbo.substring(0, vbo.length() - 4) + (metadata ? "_laps.json" : "_laps.csv");
+    File file = _storage.openFileRead(name);
+    if (!file) { sendJson(404, "{\"error\":\"Lap file not found\"}"); return; }
+    addCorsHeaders();
+    _server.sendHeader("Content-Disposition", "attachment; filename=\"" + name + "\"");
+    _server.sendHeader("Cache-Control", "no-store");
+    _server.streamFile(file, metadata ? "application/json" : "text/csv");
     file.close();
 }
 
@@ -510,7 +532,12 @@ void RaceSyncApi::begin()
         {
             uint32_t sessionId = 0;
             bool isId = parseSessionIdFromUri(sessionId);
-            if (_server.method() == HTTP_GET && isId) { handleSessionDownloadById(sessionId); return; }
+            if (_server.method() == HTTP_GET && isId) {
+                if (_server.uri().endsWith("/laps")) handleLapDownloadById(sessionId, false);
+                else if (_server.uri().endsWith("/lap-metadata")) handleLapDownloadById(sessionId, true);
+                else handleSessionDownloadById(sessionId);
+                return;
+            }
             if (_server.method() == HTTP_DELETE ||
                 (_server.method() == HTTP_POST && _server.uri().endsWith("/archive")))
             {

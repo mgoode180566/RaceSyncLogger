@@ -226,6 +226,8 @@ bool RaceSyncStorage::archiveSessionById(uint32_t sessionId, String& archivedFil
     std::vector<String> files;
     if (fileExists(base + ".log")) files.push_back(base + ".log");
     if (fileExists(base + ".kml")) files.push_back(base + ".kml");
+    if (fileExists(base + "_laps.csv")) files.push_back(base + "_laps.csv");
+    if (fileExists(base + "_laps.json")) files.push_back(base + "_laps.json");
     files.push_back(filename);
     for (const String& name : files) {
         if (_fs->exists(archivePath + "/" + name)) {
@@ -293,6 +295,12 @@ void RaceSyncStorage::addSessionsToJson(JsonArray sessions, const String& active
         session["archivable"] = archivable;
         session["generatedByRaceSync"] = filename.startsWith("RS_");
         session["downloadUrl"] = "/api/sessions/" + String(id);
+        const String base = filename.substring(0, filename.length() - 4);
+        const bool hasLaps = !active && fileExists(base + "_laps.csv");
+        session["hasLaps"] = hasLaps;
+        if (hasLaps) session["lapsDownloadUrl"] = "/api/sessions/" + String(id) + "/laps";
+        if (!active && fileExists(base + "_laps.json"))
+            session["lapMetadataDownloadUrl"] = "/api/sessions/" + String(id) + "/lap-metadata";
         session["hasKml"] = kmlAvailable;
         session["kmlGeneratedOnDemand"] = true;
         if (kmlAvailable) session["kmlDownloadUrl"] = "/api/session-kml?id=" + String(id);

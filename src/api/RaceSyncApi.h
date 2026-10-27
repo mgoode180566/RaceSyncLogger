@@ -56,6 +56,7 @@ private:
     void handleSessionDownloadById(uint32_t sessionId);
     void handleSessionKmlDownloadById(uint32_t sessionId);
     void handleSessionArchiveById(uint32_t sessionId);
+    void handleLapDownloadById(uint32_t sessionId, bool metadata);
     void handleLegacySessionDownload(const String& filename);
     bool parseSessionIdFromUri(uint32_t& sessionId);
     static String formatUptime();

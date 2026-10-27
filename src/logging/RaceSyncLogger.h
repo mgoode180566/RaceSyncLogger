@@ -6,6 +6,7 @@
 
 #include "../config/RaceSyncTypes.h"
 #include "RaceSyncStorage.h"
+#include "../laptiming/RaceSyncLapTiming.h"
 
 class RaceSyncLogger
 {
@@ -17,6 +18,7 @@ public:
     bool manualStop();
     void forceStop();
     void inhibitAutomaticStartUntilStationary();
+    void addLapTimingStatus(JsonObject status) const { _lapTiming.addStatus(status); }
     bool recording() const;
     bool manualSession() const;
     const String& currentFilename() const;
@@ -55,6 +57,7 @@ public:
     uint32_t invalidGpsSamples() const;
 
 private:
+    RaceSyncLapTiming _lapTiming;
     RaceSyncStorage* _storage = nullptr;
     bool _recording = false;
     bool _manualSession = false;

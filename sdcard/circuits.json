@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "selectedCircuitId": "",
+  "circuits": [
+    {
+      "id": "cadwell-park-full",
+      "name": "Cadwell Park",
+      "layout": "Full",
+      "identificationRadiusMetres": 1500,
+      "minimumLapSeconds": 60,
+      "minimumSpeedKmh": 10,
+      "maximumSpeedKmh": 300,
+      "maximumGapMs": 1000,
+      "rearmDistanceMetres": 10,
+      "crossingHeadingDegrees": null,
+      "startFinish": {
+        "point1": { "latitude": 53.310286, "longitude": -0.059360 },
+        "point2": { "latitude": 53.310344, "longitude": -0.059583 }
+      }
+    }
+  ]
+}

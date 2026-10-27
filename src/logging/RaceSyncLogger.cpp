@@ -116,6 +116,7 @@ bool RaceSyncLogger::begin(RaceSyncStorage& storage)
 {
     _storage = &storage;
     loadAutomaticSettings();
+    _lapTiming.begin(storage);
     return storage.ready() && storage.writable();
 }
 
@@ -308,6 +309,19 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
     if (_storage->freeBytes() < RaceSyncConfig::MIN_FREE_STORAGE_BYTES) { Serial.println("[LOGGER] Insufficient free storage - recording not started"); return false; }
 
     _filename=createFilename(t,mode);
+    // A quick stop/restart can share the same GPS second. Never truncate an
+    // existing session or any of its companion files.
+    const String originalBase=_filename.substring(0,_filename.length()-4);
+    bool available=false;
+    for(unsigned attempt=0;attempt<1000;++attempt) {
+        const String base=originalBase+(attempt ? "_"+String(attempt) : String(""));
+        if(!_storage->fileExists(base+".vbo") && !_storage->fileExists(base+".part") &&
+           !_storage->fileExists(base+".log") && !_storage->fileExists(base+"_laps.csv") &&
+           !_storage->fileExists(base+"_laps.json")) {
+            _filename=base+".vbo";available=true;break;
+        }
+    }
+    if(!available) {++_writeErrors;Serial.println("[LOGGER] No unused session filename");return false;}
     _partFilename=_filename;
     _partFilename.replace(".vbo", ".part");
     _logFilename=_filename;
@@ -323,6 +337,7 @@ bool RaceSyncLogger::start(const Telemetry& t, DataMode mode, bool manual)
         Serial.println("[LOGGER] Warning: unable to create diagnostic log; VBO recording will continue");
     }
 
+    _lapTiming.startSession(_filename);
     writeHeader(_file,mode); _file.flush();
     _sampleCount=0; _belowSpeedSince=0; _lastFlush=millis(); _lastWriteMs=0; _startedMs=millis(); _lastStorageCheckMs=0; _recording=true; _manualSession=manual; _autoStartInhibit=false; _autoStartCandidateSamples=0; _autoRearmStationarySince=0;
     _aviStartGpsTimeValid=gpsTimeOfDayMilliseconds(t, _aviStartGpsTimeMs);
@@ -397,6 +412,7 @@ void RaceSyncLogger::stop(bool finalize, const char* reason)
         }
     }
 
+    _lapTiming.stopSession();
     writeDiagnosticSummary(finalized);
     if (_logFile) _logFile.close();
 
@@ -462,6 +478,9 @@ void RaceSyncLogger::observeGpsHealth(bool connected, bool fixValid, uint32_t pa
     if (packetAgeMs != UINT32_MAX && packetAgeMs > _sessionMaxGpsPacketAgeMs)
         _sessionMaxGpsPacketAgeMs = packetAgeMs;
 
+    if (!connected || !fixValid || packetAgeMs == UINT32_MAX || packetAgeMs > GPS_STALE_THRESHOLD_MS)
+        _lapTiming.invalidate();
+
     const bool stale = !connected || packetAgeMs == UINT32_MAX || packetAgeMs > GPS_STALE_THRESHOLD_MS;
     if (stale && !_gpsStale)
     {
@@ -493,6 +512,7 @@ void RaceSyncLogger::writeSample(const Telemetry& t)
     vboTelemetry.aviTime = static_cast<double>(aviElapsedMilliseconds(t));
     size_t vboWritten=_file.println(createVBoxLine(vboTelemetry));
     if (vboWritten==0) { _writeErrors++; Serial.println("[LOGGER] VBO write failed - retaining .part for recovery"); stop(false, "SD_WRITE_ERROR"); return; }
+    _lapTiming.process(t);
     _sampleCount++; _lastWriteMs=millis(); uint32_t now=millis();
     if (now-_lastFlush >= RaceSyncConfig::LOG_FLUSH_INTERVAL_MS) { _file.flush(); _lastFlush=now; }
 }
@@ -504,6 +524,7 @@ void RaceSyncLogger::processSample(const Telemetry& t, DataMode mode)
 
     if (!t.valid)
     {
+        _lapTiming.invalidate();
         _autoStartCandidateSamples = 0;
         _autoRearmStationarySince = 0;
         if (_recording)

@@ -473,3 +473,10 @@ Archiving keeps the data on the same SD card and does **not** free space or prov
 
 The UI uses `POST /api/sessions/{id}/archive`, returning `archived: true` and `archivePath` on success. The old `DELETE /api/sessions/{id}` endpoint now also archives, for older UI clients; it never permanently deletes a session and returns the archive response rather than `deleted: true`.
 
+
+## GPS lap timing
+
+GPS start/finish gates can now generate a lap CSV and configuration snapshot for
+each session. The firmware seeds `/circuits.json` on the SD card with the selected
+Cadwell endpoints when the file is missing. See [GPS lap timing](docs/LAP_TIMING.md)
+for circuit configuration, downloads and RaceChrono comparison.

@@ -11,6 +11,7 @@ void RaceSyncApi::beginManualLoggingRoutes()
     // without competing with the active VBO write path.
     _server.on("/api/runtime", HTTP_GET, [this]() {
         JsonDocument doc;
+        _logger.addLapTimingStatus(doc["lapTiming"].to<JsonObject>());
         doc["firmware"] = RaceSyncConfig::FIRMWARE;
         doc["boardModel"] = Board::NAME;
         doc["buildNumber"] = RaceSyncConfig::BUILD_NUMBER;
