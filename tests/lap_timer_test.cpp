@@ -1,4 +1,5 @@
 #include "../src/laptiming/LapTimer.h"
+#include "../src/laptiming/UtcTime.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>

@@ -31,9 +31,6 @@ struct Crossing {
 };
 bool validPoint(const Point& point);
 double distanceMetres(const Point& a, const Point& b);
-// UTC date plus signed fractional seconds (UBX nano may be negative).
-uint64_t utcMilliseconds(int year, int month, int day, int hour, int minute,
-                         int second, double fractionalSeconds);
 class LapTimer {
 public:
     bool configure(const Settings& settings);

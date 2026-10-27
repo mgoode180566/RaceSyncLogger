@@ -13,7 +13,6 @@ XY project(const Point& p, const Point& origin) {
     return {(p.longitude-origin.longitude)*METRES_PER_DEGREE*std::cos(origin.latitude*PI/180),
             (p.latitude-origin.latitude)*METRES_PER_DEGREE};
 }
-bool leap(int y) { return y%4==0 && (y%100!=0 || y%400==0); }
 }
 bool validPoint(const Point& p) {
     return std::isfinite(p.latitude) && std::isfinite(p.longitude) &&
@@ -21,18 +20,6 @@ bool validPoint(const Point& p) {
 }
 double distanceMetres(const Point& a, const Point& b) {
     XY d=project(a,b); return std::hypot(d.x,d.y);
-}
-uint64_t utcMilliseconds(int y,int m,int d,int h,int minute,int s,double fraction) {
-    if (y<2024 || y>2099 || m<1 || m>12 || h<0 || h>23 || minute<0 || minute>59 ||
-        s<0 || s>59 || !std::isfinite(fraction) || fraction<=-1 || fraction>=1) return 0;
-    const int lengths[]={31,28,31,30,31,30,31,31,30,31,30,31};
-    if(d<1 || d>lengths[m-1]+(m==2 && leap(y))) return 0;
-    int days=0;
-    for(int year=1970;year<y;++year) days+=leap(year)?366:365;
-    for(int month=1;month<m;++month) days+=lengths[month-1]+(month==2 && leap(y));
-    days+=d-1;
-    return static_cast<uint64_t>(static_cast<int64_t>(days)*86400000 +
-        ((h*60LL+minute)*60+s)*1000 + std::llround(fraction*1000));
 }
 bool LapTimer::configure(const Settings& s) {
     *this=LapTimer();

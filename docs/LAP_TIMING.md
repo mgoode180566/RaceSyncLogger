@@ -125,8 +125,10 @@ be retained in the session snapshot.
 Run the native geometry/timing regression tests without a board:
 
 ```sh
-g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp tests/lap_timer_test.cpp -o /tmp/lap-tests
+g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp src/laptiming/UtcTime.cpp tests/lap_timer_test.cpp -o /tmp/lap-tests
 /tmp/lap-tests
+g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp src/laptiming/UtcTime.cpp src/laptiming/CircuitSelector.cpp tests/lap_modules_test.cpp -o /tmp/lap-module-tests
+/tmp/lap-module-tests
 python3 tests/check_circuits.py
 ```
 
@@ -136,3 +138,29 @@ duplicate/exact-on-line samples, minimum lap time, GPS loss/gaps/jumps, UTC roll
 invalid configuration and preservation of the supplied Cadwell endpoints.
 Hardware SD behaviour and actual Cadwell lap agreement still require on-bike or
 recorded-session validation.
+
+## Module boundaries
+
+The logger still uses the same `RaceSyncLapTiming` API. That class coordinates
+session start/stop and routes samples and completed laps between these modules:
+
+| Module | Responsibility | Dependencies |
+| --- | --- | --- |
+| `LapTimer` | Finite gate crossings, GPS continuity, direction/rearm rules, interpolated timestamps and lap state | Standard C++ only |
+| `CircuitSelector` | Nearest circuit, identification radius, overlapping layouts and explicit preference | Standard C++ and core position helpers |
+| `UtcTime` | GPS date/fraction conversion and UTC string formatting | Standard C++ only |
+| `GpsSampleAdapter` | Convert RaceSync telemetry to the timer's sample model | Telemetry and UTC conversion |
+| `CircuitDatabase` | Seed/load/validate SD JSON; retain definitions and the session snapshot | Storage and ArduinoJson |
+| `LapSessionWriter` | CSV rows, JSON snapshots, flushing, closing and write-error reporting | Storage, ArduinoJson and UTC formatting |
+| `RaceSyncLapTiming` | Session lifecycle, locked circuit selection, sample/event routing and status | The modules above |
+
+The timer has no knowledge of the SD card, JSON, CSV or RaceSync telemetry.
+The writer has no knowledge of GPS crossing detection or circuit selection.
+The database does not select a circuit or create lap output files. No module
+changes the two configured gate endpoints.
+
+Native regression tests exercise the timing state machine, selection policy and
+UTC conversion/formatting independently of the ESP32. Both firmware builds check
+that the storage and telemetry adapters still integrate with the existing logger.
+The circuit JSON schema, session filenames, CSV columns, metadata format, API
+routes and download controls remain unchanged by this refactoring.

@@ -7,8 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp tests/lap_timer_test.cpp -o /tmp/lap-tests
+      - run: g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp src/laptiming/UtcTime.cpp tests/lap_timer_test.cpp -o /tmp/lap-tests
       - run: /tmp/lap-tests
+      - run: g++ -std=c++11 -Wall -Wextra -Werror -pedantic src/laptiming/LapTimer.cpp src/laptiming/UtcTime.cpp src/laptiming/CircuitSelector.cpp tests/lap_modules_test.cpp -o /tmp/lap-module-tests
+      - run: /tmp/lap-module-tests
       - run: python3 tests/check_circuits.py
   build:
     runs-on: ubuntu-latest
