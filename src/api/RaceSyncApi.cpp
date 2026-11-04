@@ -417,7 +417,6 @@ bool RaceSyncApi::parseSessionIdFromUri(uint32_t& sessionId)
     sessionId = 0;
     const String prefix = "/api/sessions/";
     String value = _server.uri().substring(prefix.length());
-    if (_server.method() == HTTP_POST && value.endsWith("/archive")) value = value.substring(0, value.length() - 8);
     if (value.length() == 0) return false;
     for (size_t i = 0; i < value.length(); i++) if (value[i] < '0' || value[i] > '9') return false;
     unsigned long parsed = strtoul(value.c_str(), nullptr, 10);
@@ -469,11 +468,11 @@ void RaceSyncApi::handleLegacySessionDownload(const String& filename)
     file.close();
 }
 
-void RaceSyncApi::handleSessionArchiveById(uint32_t sessionId)
+void RaceSyncApi::handleSessionDeleteById(uint32_t sessionId)
 {
     if (_logger.recording())
     {
-        sendJson(423, "{\"error\":\"Session archiving suspended while recording\",\"racePriorityMode\":true}");
+        sendJson(423, "{\"error\":\"Session deletion suspended while recording\",\"racePriorityMode\":true}");
         return;
     }
 
@@ -482,16 +481,18 @@ void RaceSyncApi::handleSessionArchiveById(uint32_t sessionId)
         JsonDocument doc; doc["error"] = "Session not found"; if (_storage.lastError().length()) doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(404, response); return;
     }
 
-    String archivedFilename;
-    if (!_storage.archiveSessionById(sessionId, archivedFilename)) {
-        JsonDocument doc; doc["error"] = "Unable to archive session"; doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(500, response); return;
+    String deletedFilename;
+    if (!_storage.deleteSessionById(sessionId, deletedFilename)) {
+        JsonDocument doc; doc["error"] = "Unable to delete session"; doc["storageError"] = _storage.lastError(); String response; serializeJson(doc, response); sendJson(500, response); return;
     }
 
     JsonDocument doc;
-    doc["archived"] = true;
-    doc["archivePath"] = "/archive/" + archivedFilename;
+    doc["deleted"] = true;
     doc["id"] = sessionId;
-    doc["file"] = archivedFilename;
+    doc["file"] = deletedFilename;
+    doc["freeBytes"] = _storage.freeBytes();
+    doc["usedBytes"] = _storage.usedBytes();
+    doc["usedPercent"] = _storage.totalBytes() > 0 ? (_storage.usedBytes() * 100.0) / _storage.totalBytes() : 0.0;
     String response; serializeJson(doc, response); sendJson(200, response);
 }
 
@@ -511,11 +512,10 @@ void RaceSyncApi::begin()
             uint32_t sessionId = 0;
             bool isId = parseSessionIdFromUri(sessionId);
             if (_server.method() == HTTP_GET && isId) { handleSessionDownloadById(sessionId); return; }
-            if (_server.method() == HTTP_DELETE ||
-                (_server.method() == HTTP_POST && _server.uri().endsWith("/archive")))
+            if (_server.method() == HTTP_DELETE)
             {
-                if (!isId) { sendJson(400, "{\"error\":\"Archive requires a numeric session id\"}"); return; }
-                handleSessionArchiveById(sessionId); return;
+                if (!isId) { sendJson(400, "{\"error\":\"DELETE requires a numeric session id\"}"); return; }
+                handleSessionDeleteById(sessionId); return;
             }
             if (_server.method() == HTTP_GET && !isId)
             {
@@ -534,4 +534,3 @@ void RaceSyncApi::update()
 {
     _server.handleClient();
 }
-
